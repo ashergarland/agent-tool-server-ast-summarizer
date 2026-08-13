@@ -52,7 +52,12 @@ const isExported = (node: ts.Node): boolean =>
 
 const stripClassMember = (member: ts.ClassElement): ts.ClassElement | undefined => {
   if (ts.isConstructorDeclaration(member)) {
-    return ts.factory.updateConstructorDeclaration(member, member.modifiers, member.parameters, undefined);
+    return ts.factory.updateConstructorDeclaration(
+      member,
+      member.modifiers,
+      member.parameters,
+      undefined,
+    );
   }
   if (ts.isMethodDeclaration(member)) {
     return ts.factory.updateMethodDeclaration(
@@ -213,7 +218,8 @@ export class AstService {
       .map(skeletonStatement)
       .filter((statement): statement is ts.Statement => statement !== undefined);
     const skeletonFile = ts.factory.updateSourceFile(sourceFile, statements);
-    const skeleton = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed })
+    const skeleton = ts
+      .createPrinter({ newLine: ts.NewLineKind.LineFeed })
       .printFile(skeletonFile)
       .trim();
     return {
@@ -299,13 +305,12 @@ export class AstService {
     return readFile(path, 'utf8');
   }
 
-  private async resolveLocalModule(specifier: string, containingFile: string): Promise<string | undefined> {
-    const resolved = ts.resolveModuleName(
-      specifier,
-      containingFile,
-      this.compilerOptions,
-      ts.sys,
-    ).resolvedModule?.resolvedFileName;
+  private async resolveLocalModule(
+    specifier: string,
+    containingFile: string,
+  ): Promise<string | undefined> {
+    const resolved = ts.resolveModuleName(specifier, containingFile, this.compilerOptions, ts.sys)
+      .resolvedModule?.resolvedFileName;
     if (!resolved || !supportedExtensions.has(extname(resolved).toLowerCase())) return undefined;
     try {
       const path = await realpath(resolved);

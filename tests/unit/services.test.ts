@@ -54,7 +54,10 @@ describe('AST service', () => {
   it('maps local dependencies recursively and reports unresolved imports', async () => {
     const root = await fixture();
     await writeFile(join(root, 'src', 'types.ts'), "export * from './missing.js';\n");
-    const graph = await createServices(testConfig(), root).ast.getDependencyGraph('src/main.ts', 20);
+    const graph = await createServices(testConfig(), root).ast.getDependencyGraph(
+      'src/main.ts',
+      20,
+    );
     expect(graph.entry).toBe('src/main.ts');
     expect(graph.files).toEqual(['src/main.ts', 'src/types.ts']);
     expect(graph.dependencies).toContainEqual({

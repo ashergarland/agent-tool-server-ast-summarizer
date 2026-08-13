@@ -76,4 +76,7 @@ export const getDependencyGraphTool = defineTool({
   handler: (input, services) => services.ast.getDependencyGraph(input.path, input.maxDepth),
 });
 
-export const toolDefinitions = [getFileSkeletonTool, getDependencyGraphTool] as const satisfies readonly ToolDefinition[];
+export const toolDefinitions = [
+  getFileSkeletonTool,
+  getDependencyGraphTool,
+] as const satisfies readonly ToolDefinition[];

@@ -29,7 +29,9 @@ afterEach(async () => Promise.all(servers.splice(0).map((app) => app.close())));
 
 describe('HTTP API', () => {
   it('serves public metadata and request IDs', async () => {
-    const response = await (await server()).inject({
+    const response = await (
+      await server()
+    ).inject({
       method: 'GET',
       url: '/version',
       headers: { 'x-request-id': 'caller-id' },
@@ -43,14 +45,18 @@ describe('HTTP API', () => {
     expect((await (await server()).inject({ method: 'GET', url: '/tools' })).statusCode).toBe(401);
     expect(
       (
-        await (await server()).inject({
+        await (
+          await server()
+        ).inject({
           method: 'GET',
           url: '/tools',
           headers: { 'x-api-key': 'not-the-configured-key-but-long-enough' },
         })
       ).statusCode,
     ).toBe(401);
-    const response = await (await server()).inject({
+    const response = await (
+      await server()
+    ).inject({
       method: 'GET',
       url: '/tools',
       headers: { 'x-api-key': apiKey },
@@ -91,7 +97,9 @@ describe('HTTP API', () => {
   });
 
   it('supports development-only disabled authentication', async () => {
-    const response = await (await server({ AUTH_MODE: 'disabled' })).inject({
+    const response = await (
+      await server({ AUTH_MODE: 'disabled' })
+    ).inject({
       method: 'GET',
       url: '/tools',
     });

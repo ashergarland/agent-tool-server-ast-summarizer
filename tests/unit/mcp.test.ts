@@ -18,12 +18,10 @@ describe('MCP adapter', () => {
     const config = testConfig();
     const root = await mkdtemp(join(tmpdir(), 'ast-mcp-'));
     await writeFile(join(root, 'example.ts'), 'export function example(): number { return 1; }');
-    const server = createMcpServer(
-      config,
-      createToolRegistry(),
-      createServices(config, root),
-      { requestId: 'mcp-test', principal: 'test-client' },
-    );
+    const server = createMcpServer(config, createToolRegistry(), createServices(config, root), {
+      requestId: 'mcp-test',
+      principal: 'test-client',
+    });
     const client = new Client({ name: 'test-client', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     closeables.push(client, server);

@@ -121,9 +121,10 @@ export const buildOpenApiDocument = (config: AppConfig, registry: ToolRegistry):
   return {
     openapi: '3.1.0',
     info: {
-      title: 'Agent Tool Server Template',
+      title: 'Agent Tool Server AST Summarizer',
       version: config.service.version,
-      description: 'Replaceable tool server infrastructure generated from one typed tool registry.',
+      description:
+        'Local TypeScript and JavaScript skeleton extraction and dependency graph analysis.',
     },
     servers: [{ url: config.service.publicBaseUrl ?? `http://localhost:${config.http.port}` }],
     security: config.auth.mode === 'disabled' ? [] : [{ bearerAuth: [] }],
