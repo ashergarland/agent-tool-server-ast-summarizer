@@ -194,6 +194,7 @@ const moduleSpecifiers = (sourceFile: ts.SourceFile): readonly string[] => {
 
 export class AstService {
   private readonly root: string;
+  private readonly rootRealPath: Promise<string>;
   private readonly compilerOptions: ts.CompilerOptions = {
     allowJs: true,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -202,6 +203,7 @@ export class AstService {
 
   public constructor(root: string = process.cwd()) {
     this.root = resolve(root);
+    this.rootRealPath = realpath(this.root);
   }
 
   public async getFileSkeleton(filePath: string): Promise<FileSkeleton> {
@@ -300,7 +302,7 @@ export class AstService {
   private async readSource(path: string): Promise<string> {
     const metadata = await stat(path);
     if (metadata.size > maximumFileSize) {
-      throw badRequest(`Source file exceeds the ${maximumFileSize}-byte limit`);
+      throw badRequest('Source file exceeds the 5 MB limit');
     }
     return readFile(path, 'utf8');
   }
@@ -322,7 +324,7 @@ export class AstService {
   }
 
   private async assertWithinRoot(path: string): Promise<void> {
-    const root = await realpath(this.root);
+    const root = await this.rootRealPath;
     const pathFromRoot = relative(root, path);
     if (pathFromRoot === '..' || pathFromRoot.startsWith(`..${sep}`) || resolve(path) === root) {
       throw forbidden('Source paths must remain within the configured workspace root');

@@ -44,7 +44,6 @@ HTTP / OpenAPI / MCP transports
 - Transports contain no provider or product logic.
 - The service uses the local TypeScript compiler API and never sends source to an external service.
 - Every transport uses the same `ToolRegistry`.
-- Write tools pass through `Guardrails` before calling a provider.
 
 ## Start locally
 
