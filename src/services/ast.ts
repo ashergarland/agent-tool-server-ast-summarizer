@@ -184,7 +184,7 @@ const moduleSpecifiers = (sourceFile: ts.SourceFile): readonly string[] => {
       (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
         (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
     ) {
-      values.add(node.arguments[0]!.text);
+      values.add(node.arguments[0].text);
     }
     ts.forEachChild(node, visit);
   };
