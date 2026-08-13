@@ -27,6 +27,10 @@ export class UserService {
 }
 export function createUser(id: string): User { return { id }; }
 function hidden(): void { console.log('hidden'); }
+class HiddenClass {}
+interface HiddenInterface {}
+type HiddenType = string;
+enum HiddenEnum { Value }
 export const arrow = (value: number) => value + 1;
 `,
   );
@@ -40,7 +44,7 @@ describe('AST service', () => {
     expect(skeleton).toMatchObject({
       path: 'src/main.ts',
       language: 'typescript',
-      originalLines: 14,
+      originalLines: 18,
     });
     expect(skeleton.skeleton).toContain('/** Public service. */');
     expect(skeleton.skeleton).toContain('export class UserService');
@@ -49,6 +53,10 @@ describe('AST service', () => {
     expect(skeleton.skeleton).toContain('export const arrow;');
     expect(skeleton.skeleton).not.toContain('return { id }');
     expect(skeleton.skeleton).not.toContain('hidden');
+    expect(skeleton.skeleton).not.toContain('HiddenClass');
+    expect(skeleton.skeleton).not.toContain('HiddenInterface');
+    expect(skeleton.skeleton).not.toContain('HiddenType');
+    expect(skeleton.skeleton).not.toContain('HiddenEnum');
   });
 
   it('maps local dependencies recursively and reports unresolved imports', async () => {

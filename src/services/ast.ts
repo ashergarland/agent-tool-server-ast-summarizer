@@ -120,6 +120,7 @@ const skeletonStatement = (statement: ts.Statement): ts.Statement | undefined =>
     );
   }
   if (ts.isClassDeclaration(statement)) {
+    if (!isExported(statement)) return undefined;
     const members = statement.members
       .map(stripClassMember)
       .filter((member): member is ts.ClassElement => member !== undefined);
@@ -152,10 +153,12 @@ const skeletonStatement = (statement: ts.Statement): ts.Statement | undefined =>
   if (
     ts.isInterfaceDeclaration(statement) ||
     ts.isTypeAliasDeclaration(statement) ||
-    ts.isEnumDeclaration(statement) ||
-    ts.isExportDeclaration(statement) ||
-    ts.isExportAssignment(statement)
+    ts.isEnumDeclaration(statement)
   ) {
+    if (!isExported(statement)) return undefined;
+    return statement;
+  }
+  if (ts.isExportDeclaration(statement) || ts.isExportAssignment(statement)) {
     return statement;
   }
   return undefined;
