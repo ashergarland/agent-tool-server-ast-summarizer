@@ -1,8 +1,18 @@
-# Agent Tool Server Template
+# Agent Tool Server AST Summarizer
 
-Reusable GitHub template for the `ashergarland/agent-tool-server-*` family. It provides generic
-infrastructure for one typed tool registry exposed through stdio MCP, stateless Streamable HTTP
-MCP, and HTTP/OpenAPI. The example item domain is intentionally disposable.
+Local TypeScript and JavaScript analysis exposed through stdio MCP, stateless Streamable HTTP MCP,
+and HTTP/OpenAPI. It lets agents inspect source structure without reading implementation bodies.
+
+## Tools
+
+| Tool                   | Purpose                                                                  |
+| ---------------------- | ------------------------------------------------------------------------ |
+| `get_file_skeleton`    | Return classes, exported signatures, doc comments, interfaces, and types |
+| `get_dependency_graph` | Recursively map relative imports and re-exports from an entry file       |
+
+Paths are resolved relative to the server's current working directory. Real paths must remain
+inside that workspace, supported source files are limited to 5 MB, and dependency traversal is
+bounded by `maxDepth`.
 
 ## Included contract
 
@@ -26,18 +36,14 @@ HTTP / OpenAPI / MCP transports
              |
        ToolRegistry
              |
-          Services
+        AST Service
              |
-       Provider port
-             |
-      Provider adapter
+   TypeScript Compiler API
 ```
 
 - Transports contain no provider or product logic.
-- Services implement domain behavior and use provider interfaces, never SDK types.
-- Provider adapters translate external failures to `AppError`.
+- The service uses the local TypeScript compiler API and never sends source to an external service.
 - Every transport uses the same `ToolRegistry`.
-- Write tools pass through `Guardrails` before calling a provider.
 
 ## Start locally
 
@@ -70,28 +76,6 @@ Generate the OpenAPI artifact:
 ```bash
 npm run openapi:emit
 ```
-
-## Create a new family server
-
-After selecting **Use this template**, replace the example in this order:
-
-1. Update `package.json`, `server.json`, `.env.example`, and the title/description in
-   `src/openapi/document.ts`.
-2. Replace `src/provider/types.ts` with the narrow domain port. Keep third-party SDK types out of
-   the interface when practical.
-3. Replace `src/provider/memory.ts` with a real adapter and map provider errors to `AppError`.
-4. Replace `src/services/items.ts`; keep authorization scope and mutation policy in services.
-5. Replace the example definitions in `src/tools/definitions.ts`. Preserve `defineTool`,
-   `ToolDefinition`, and the central `toolDefinitions` array.
-6. Wire the provider in `src/app.ts` and `src/mcp/stdio.ts`.
-7. Replace example tests and metadata. Search for `example`, `template`, `replace`, and
-   `tools.example.com`.
-8. Tailor `infra/` role assignments to the least privilege required by the provider. The supplied
-   identity has no domain data-plane roles.
-9. Run every command in [Validation](#validation).
-
-Do not copy identifiers, tenant/subscription IDs, credentials, resource names, or descriptions
-from another family server. Parameters and secrets must come from deployment inputs or Key Vault.
 
 ## Security defaults
 
@@ -147,7 +131,7 @@ npm run test:coverage
 npm run build
 npm run openapi:emit
 npm run metadata:validate
-docker build -t agent-tool-server-template .
+docker build -t agent-tool-server-ast-summarizer .
 az bicep build --file infra/main.bicep
 az bicep lint --file infra/main.bicep
 ```

@@ -1,7 +1,7 @@
 {
-  "name": "agent-tool-server-template",
+  "name": "agent-tool-server-ast-summarizer",
   "version": "0.1.0",
-  "description": "Reusable Node.js template for typed MCP and HTTP agent tool servers.",
+  "description": "MCP and HTTP tools for local AST skeletons and dependency graphs.",
   "license": "MIT",
   "type": "module",
   "private": true,
@@ -27,13 +27,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ashergarland/agent-tool-server-template.git"
+    "url": "git+https://github.com/ashergarland/agent-tool-server-ast-summarizer.git"
   },
   "dependencies": {
     "@fastify/rate-limit": "^11.2.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "fastify": "5.11.2",
     "pino": "10.3.1",
+    "typescript": "5.9.3",
     "zod": "4.4.3"
   },
   "devDependencies": {
@@ -43,7 +44,6 @@
     "eslint-config-prettier": "10.1.8",
     "prettier": "3.9.6",
     "tsx": "4.23.11",
-    "typescript": "5.9.3",
     "typescript-eslint": "8.66.0",
     "vitest": "4.1.10"
   }

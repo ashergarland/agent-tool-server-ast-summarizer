@@ -1,14 +1,16 @@
 import type { AppConfig } from '../config/index.js';
-import type { ExampleProvider } from '../provider/types.js';
+import { AstService } from './ast.js';
 import { Guardrails } from './guardrails.js';
-import { ItemService } from './items.js';
 
 export interface Services {
-  readonly items: ItemService;
+  readonly ast: AstService;
   readonly guardrails: Guardrails;
 }
 
-export const createServices = (config: AppConfig, provider: ExampleProvider): Services => {
+export const createServices = (
+  config: AppConfig,
+  workspaceRoot: string = process.cwd(),
+): Services => {
   const guardrails = new Guardrails(config);
-  return { guardrails, items: new ItemService(provider, guardrails) };
+  return { ast: new AstService(workspaceRoot), guardrails };
 };

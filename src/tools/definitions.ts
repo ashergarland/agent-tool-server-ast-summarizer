@@ -30,52 +30,53 @@ export const defineTool = <InputSchema extends z.ZodType, OutputSchema extends z
   definition: ToolDefinition<InputSchema, OutputSchema>,
 ): ToolDefinition<InputSchema, OutputSchema> => definition;
 
-const itemSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  status: z.enum(['pending', 'complete']),
-});
+const filePathSchema = z.string().min(1).max(1_000);
 
-export const listItemsTool = defineTool({
-  name: 'example_list_items',
-  title: 'List example items',
-  summary: 'List items from the replaceable example provider.',
-  description: 'Demonstrates a read-only tool crossing tool, service, and provider boundaries.',
+export const getFileSkeletonTool = defineTool({
+  name: 'get_file_skeleton',
+  title: 'Get file skeleton',
+  summary: 'Reduce a source file to its structural declarations.',
+  description:
+    'Returns class signatures, exported functions and variables, doc comments, interfaces, types, and enums while omitting implementation bodies.',
   kind: 'read',
-  inputSchema: z.object({}),
-  outputSchema: z.object({ items: z.array(itemSchema) }),
-  handler: async (_input, services) => ({ items: [...(await services.items.list())] }),
-});
-
-export const getItemTool = defineTool({
-  name: 'example_get_item',
-  title: 'Get an example item',
-  summary: 'Get one item by identifier.',
-  description: 'Demonstrates validated input and safe not-found error mapping.',
-  kind: 'read',
-  inputSchema: z.object({ id: z.string().min(1).max(100) }),
-  outputSchema: z.object({ item: itemSchema }),
-  handler: async (input, services) => ({ item: await services.items.get(input.id) }),
-});
-
-export const updateItemTool = defineTool({
-  name: 'example_update_item',
-  title: 'Update an example item',
-  summary: 'Preview or update an item status.',
-  description: 'Demonstrates dry-run and explicit-confirmation mutation guardrails.',
-  kind: 'write',
-  inputSchema: z.object({
-    id: z.string().min(1).max(100),
-    status: z.enum(['pending', 'complete']),
-    dryRun: z.boolean().default(false),
-    confirm: z.boolean().default(false),
+  inputSchema: z.object({ path: filePathSchema }),
+  outputSchema: z.object({
+    path: z.string(),
+    language: z.enum(['typescript', 'javascript']),
+    skeleton: z.string(),
+    originalLines: z.number().int().nonnegative(),
+    skeletonLines: z.number().int().nonnegative(),
   }),
-  outputSchema: z.object({ item: itemSchema, performed: z.boolean(), dryRun: z.boolean() }),
-  handler: (input, services) => services.items.updateStatus(input),
+  handler: (input, services) => services.ast.getFileSkeleton(input.path),
+});
+
+const dependencySchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  specifier: z.string(),
+});
+
+export const getDependencyGraphTool = defineTool({
+  name: 'get_dependency_graph',
+  title: 'Get dependency graph',
+  summary: 'Map local source-file imports from an entry point.',
+  description:
+    'Recursively resolves relative static imports, re-exports, require calls, and dynamic imports without returning file implementations.',
+  kind: 'read',
+  inputSchema: z.object({
+    path: filePathSchema,
+    maxDepth: z.number().int().min(0).max(100).default(20),
+  }),
+  outputSchema: z.object({
+    entry: z.string(),
+    files: z.array(z.string()),
+    dependencies: z.array(dependencySchema),
+    unresolved: z.array(z.object({ from: z.string(), specifier: z.string() })),
+  }),
+  handler: (input, services) => services.ast.getDependencyGraph(input.path, input.maxDepth),
 });
 
 export const toolDefinitions = [
-  listItemsTool,
-  getItemTool,
-  updateItemTool,
+  getFileSkeletonTool,
+  getDependencyGraphTool,
 ] as const satisfies readonly ToolDefinition[];
