@@ -1,7 +1,9 @@
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import pino from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createHttpServer } from '../../src/server/http.js';
-import { MemoryProvider } from '../../src/provider/memory.js';
 import { createServices } from '../../src/services/index.js';
 import { createToolRegistry } from '../../src/tools/registry.js';
 import { testConfig } from '../helpers/config.js';
@@ -9,12 +11,14 @@ import { testConfig } from '../helpers/config.js';
 const servers: ReturnType<typeof createHttpServer>[] = [];
 const apiKey = 'test-api-key-that-is-at-least-32-characters';
 
-const server = (overrides: Record<string, unknown> = {}) => {
+const server = async (overrides: Record<string, unknown> = {}) => {
   const config = testConfig(overrides);
+  const root = await mkdtemp(join(tmpdir(), 'ast-http-'));
+  await writeFile(join(root, 'example.ts'), 'export function example(): number { return 1; }');
   const app = createHttpServer({
     config,
     logger: pino({ level: 'silent' }),
-    services: createServices(config, new MemoryProvider()),
+    services: createServices(config, root),
     registry: createToolRegistry(),
   });
   servers.push(app);
@@ -25,7 +29,7 @@ afterEach(async () => Promise.all(servers.splice(0).map((app) => app.close())));
 
 describe('HTTP API', () => {
   it('serves public metadata and request IDs', async () => {
-    const response = await server().inject({
+    const response = await (await server()).inject({
       method: 'GET',
       url: '/version',
       headers: { 'x-request-id': 'caller-id' },
@@ -36,27 +40,27 @@ describe('HTTP API', () => {
   });
 
   it('authenticates protected routes', async () => {
-    expect((await server().inject({ method: 'GET', url: '/tools' })).statusCode).toBe(401);
+    expect((await (await server()).inject({ method: 'GET', url: '/tools' })).statusCode).toBe(401);
     expect(
       (
-        await server().inject({
+        await (await server()).inject({
           method: 'GET',
           url: '/tools',
           headers: { 'x-api-key': 'not-the-configured-key-but-long-enough' },
         })
       ).statusCode,
     ).toBe(401);
-    const response = await server().inject({
+    const response = await (await server()).inject({
       method: 'GET',
       url: '/tools',
       headers: { 'x-api-key': apiKey },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().tools).toHaveLength(3);
+    expect(response.json().tools).toHaveLength(2);
   });
 
   it('rate limits repeated unauthenticated attempts by client IP', async () => {
-    const app = server({ RATE_LIMIT_MAX: 1 });
+    const app = await server({ RATE_LIMIT_MAX: 1 });
     expect(
       (
         await app.inject({
@@ -87,7 +91,7 @@ describe('HTTP API', () => {
   });
 
   it('supports development-only disabled authentication', async () => {
-    const response = await server({ AUTH_MODE: 'disabled' }).inject({
+    const response = await (await server({ AUTH_MODE: 'disabled' })).inject({
       method: 'GET',
       url: '/tools',
     });
@@ -95,19 +99,19 @@ describe('HTTP API', () => {
   });
 
   it('invokes tools and maps validation failures', async () => {
-    const app = server();
+    const app = await server();
     const success = await app.inject({
       method: 'POST',
-      url: '/tools/example_get_item',
+      url: '/tools/get_file_skeleton',
       headers: { 'x-api-key': apiKey },
-      payload: { id: 'example-1' },
+      payload: { path: 'example.ts' },
     });
     expect(success.statusCode).toBe(200);
-    expect(success.json().result.item.id).toBe('example-1');
+    expect(success.json().result.skeleton).toContain('export function example(): number;');
 
     const invalid = await app.inject({
       method: 'POST',
-      url: '/tools/example_get_item',
+      url: '/tools/get_file_skeleton',
       headers: { 'x-api-key': apiKey },
       payload: {},
     });
@@ -115,16 +119,8 @@ describe('HTTP API', () => {
     expect(invalid.json().error.details.issues).toHaveLength(1);
   });
 
-  it('previews guarded mutations and rate limits principals', async () => {
-    const preview = await server().inject({
-      method: 'POST',
-      url: '/tools/example_update_item',
-      headers: { 'x-api-key': apiKey },
-      payload: { id: 'example-1', status: 'complete', dryRun: true },
-    });
-    expect(preview.json().result).toMatchObject({ performed: false, dryRun: true });
-
-    const limited = server({ RATE_LIMIT_MAX: 1 });
+  it('rate limits authenticated principals', async () => {
+    const limited = await server({ RATE_LIMIT_MAX: 1 });
     expect(
       (
         await limited.inject({
@@ -146,8 +142,8 @@ describe('HTTP API', () => {
   });
 
   it('publishes the generated OpenAPI document', async () => {
-    const response = await server().inject({ method: 'GET', url: '/openapi.json' });
+    const response = await (await server()).inject({ method: 'GET', url: '/openapi.json' });
     expect(response.statusCode).toBe(200);
-    expect(response.json().paths['/tools/example_list_items']).toBeDefined();
+    expect(response.json().paths['/tools/get_file_skeleton']).toBeDefined();
   });
 });

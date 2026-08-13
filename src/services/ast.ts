@@ -1,5 +1,5 @@
 import { realpath, readFile, stat } from 'node:fs/promises';
-import { dirname, extname, relative, resolve, sep } from 'node:path';
+import { extname, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import { badRequest, forbidden, notFound } from '../errors.js';
 
@@ -27,9 +27,9 @@ export interface UnresolvedDependency {
 
 export interface DependencyGraph {
   readonly entry: string;
-  readonly files: readonly string[];
-  readonly dependencies: readonly Dependency[];
-  readonly unresolved: readonly UnresolvedDependency[];
+  readonly files: string[];
+  readonly dependencies: Dependency[];
+  readonly unresolved: UnresolvedDependency[];
 }
 
 const scriptKind = (path: string): ts.ScriptKind => {
