@@ -43,11 +43,44 @@ assignments in a separate module and grant only the actions required by register
 The interactive bootstrap user receives Key Vault Secrets Officer so it can seed and rotate this
 secret. Remove that assignment after handoff if a separate deployment identity manages rotation.
 
+## Hosting is opt-in
+
+This service is local-first. A hosted instance is useful only when it has an authorized, read-only
+copy of the source it should analyse. Until then it deliberately starts, stays live on `/health`,
+and reports **not ready** on `/ready`; every tool call returns `not_ready`.
+
+To make a hosted instance ready:
+
+1. create an Azure Files share containing the source to expose;
+2. register it on the managed environment as **read-only** storage
+   (`az containerapp env storage set ... --access-mode ReadOnly`);
+3. pass its name as `workspaceStorageName`.
+
+The template then mounts it at `workspaceMountPath` and sets `AST_WORKSPACE_ROOT`. The storage
+account key stays in the environment storage definition and never enters this repository. There is
+no upload path, no clone step, and no credential in the template.
+
+If your platform cannot present a safe read-only volume, do not host the service: run it locally
+over stdio instead.
+
+## Sizing
+
+Analysis is CPU-bound and synchronous inside the compiler, so a 0.25 vCPU replica cannot absorb
+many concurrent jobs. Keep `astMaxConcurrentJobs` at or below the vCPU budget and keep
+`httpConcurrentRequests` aligned with it; scaling on twenty concurrent requests would queue
+expensive work behind a replica that cannot serve it. Surplus demand is rejected as a retryable
+`busy` error rather than queued without bound.
+
+Every analysis ceiling in `analysisLimits` is a deployment maximum. A caller may lower a limit for
+one request but can never raise one.
+
 ## Operations
 
-The app scales from zero to three replicas and uses `/health` for liveness and readiness. Log
-Analytics and workspace-based Application Insights are provisioned. Configure alert receivers in
-your organization rather than committing personal addresses.
+The app scales from zero and uses `/health` for liveness and `/ready` for readiness, so a replica
+without a usable workspace is never sent traffic. Log Analytics and workspace-based Application
+Insights are provisioned, and the `alerts` module adds restart and server-failure metric alerts.
+Set `alertNotificationEmail` from your organization's distribution list rather than committing a
+personal address.
 
 Rotate the API key by adding the replacement to `API_KEYS`, deploying, moving clients, then removing
 the old key. Key Vault references are versionless; create a new revision or restart replicas after

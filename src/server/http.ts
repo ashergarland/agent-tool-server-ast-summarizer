@@ -5,7 +5,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import type { Logger } from 'pino';
 import type { AppConfig } from '../config/index.js';
-import { AppError } from '../errors.js';
+import { AppError, toAppError } from '../errors.js';
 import { createMcpServer } from '../mcp/server.js';
 import { buildOpenApiDocument } from '../openapi/document.js';
 import type { Services } from '../services/index.js';
@@ -69,11 +69,22 @@ export const createHttpServer = ({
 
   registerErrorHandler(app, config);
 
+  /** Liveness only: the process is running and can serve HTTP. */
   app.get('/health', () => ({
     status: 'ok' as const,
     service: config.service.name,
     uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
   }));
+
+  /**
+   * Readiness: configuration, a canonical readable workspace, and analysis capacity. A hosted
+   * instance without a usable workspace root is deliberately never ready.
+   */
+  app.get('/ready', async (_request, reply) => {
+    const report = await services.readiness();
+    void reply.status(report.ready ? 200 : 503);
+    return { status: report.ready ? ('ready' as const) : ('not_ready' as const), ...report };
+  });
 
   app.get('/version', () => ({
     service: config.service.name,
@@ -83,9 +94,9 @@ export const createHttpServer = ({
     environment: config.env,
     capabilities: {
       transports: ['stdio', 'streamable-http', 'http-openapi'],
-      mutationsEnabled: config.guardrails.mutationsEnabled,
-      confirmationRequired: config.guardrails.confirmationRequired,
+      readOnly: true,
       authMode: config.auth.mode,
+      workspaceConfigured: services.workspace.configured,
     },
   }));
 
@@ -124,6 +135,7 @@ export const createHttpServer = ({
         summary: tool.summary,
         description: tool.description,
         kind: tool.kind,
+        readOnly: true,
         inputSchema: tool.inputJsonSchema,
         outputSchema: tool.outputJsonSchema,
       })),
@@ -134,19 +146,33 @@ export const createHttpServer = ({
       protectedRouteOptions,
       async (request) => {
         const tool = registry.get(request.params.toolName);
-        const principal = request.principal?.id ?? 'anonymous';
         const invokedAt = Date.now();
-        request.log.info({ event: 'tool.invoke', tool: tool.name, kind: tool.kind });
-        const result = await tool.invoke(request.body ?? {}, services, {
-          requestId: request.id,
-          principal,
-        });
-        request.log.info({
-          event: 'tool.result',
-          tool: tool.name,
-          durationMs: Date.now() - invokedAt,
-        });
-        return { tool: tool.name, requestId: request.id, result };
+        const controller = new AbortController();
+        request.raw.on('aborted', () => controller.abort());
+        request.log.info({ event: 'tool.invoke', tool: tool.name });
+        try {
+          const result = await tool.invoke(request.body ?? {}, services, {
+            requestId: request.id,
+            principal: request.principal?.id ?? 'anonymous',
+            signal: controller.signal,
+          });
+          request.log.info({
+            event: 'tool.result',
+            tool: tool.name,
+            durationMs: Date.now() - invokedAt,
+            outcome: 'ok',
+          });
+          return { tool: tool.name, requestId: request.id, result };
+        } catch (error) {
+          request.log.info({
+            event: 'tool.result',
+            tool: tool.name,
+            durationMs: Date.now() - invokedAt,
+            outcome: 'error',
+            errorCode: toAppError(error).code,
+          });
+          throw error;
+        }
       },
     );
 

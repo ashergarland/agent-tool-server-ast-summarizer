@@ -1,0 +1,106 @@
+{
+  "$comment": "Deterministic routing fixtures. CI asserts that published guidance carries the signal each scenario depends on; no external model is involved.",
+  "requiredCategories": [
+    "skeleton",
+    "graph",
+    "combined-orientation",
+    "full-body-request",
+    "inferred-signature",
+    "third-party-dependency",
+    "runtime-behaviour",
+    "invalid-path",
+    "malformed-result",
+    "truncated-result",
+    "out-of-scope"
+  ],
+  "scenarios": [
+    {
+      "id": "public-api-of-one-file",
+      "category": "skeleton",
+      "request": "What does src/services/user.ts export and what are the method signatures?",
+      "expectedTools": ["get_file_skeleton"],
+      "rationale": "A declaration view answers the question without reading implementations.",
+      "guidanceSignals": ["declarations", "signatures", "public API"]
+    },
+    {
+      "id": "local-relationships-from-entry",
+      "category": "graph",
+      "request": "Which local files does src/index.ts pull in before I start refactoring?",
+      "expectedTools": ["get_dependency_graph"],
+      "rationale": "Bounded local relationships from one entry file are exactly the graph tool.",
+      "guidanceSignals": ["local files", "entry file", "scope a change"]
+    },
+    {
+      "id": "orientation-before-reading",
+      "category": "combined-orientation",
+      "request": "Give me an overview of the auth module starting at src/auth/index.ts.",
+      "expectedTools": ["get_dependency_graph", "get_file_skeleton"],
+      "rationale": "Use the graph to find the local files, then a skeleton per file, before reading bodies.",
+      "guidanceSignals": ["orientation", "before"]
+    },
+    {
+      "id": "full-implementation-requested",
+      "category": "full-body-request",
+      "request": "Show me the complete body of the retryWithBackoff function.",
+      "expectedTools": [],
+      "rationale": "Bodies are always removed; a file-reading tool must supply the implementation.",
+      "guidanceSignals": ["never returns implementations", "specific bodies"]
+    },
+    {
+      "id": "unannotated-signature",
+      "category": "inferred-signature",
+      "request": "What is the return type of the untyped helper in lib/helper.js?",
+      "expectedTools": ["get_file_skeleton"],
+      "rationale": "The skeleton answers it, but an unresolved type is reported as unknown with a warning rather than guessed.",
+      "guidanceSignals": ["unknown", "warning"]
+    },
+    {
+      "id": "package-internals",
+      "category": "third-party-dependency",
+      "request": "How does the express router implement route matching?",
+      "expectedTools": [],
+      "rationale": "Packages are reported as external and never traversed or read.",
+      "guidanceSignals": ["third-party package internals", "external"]
+    },
+    {
+      "id": "runtime-behaviour",
+      "category": "runtime-behaviour",
+      "request": "What value does CONFIG_TIMEOUT hold at runtime and what side effects does init() cause?",
+      "expectedTools": [],
+      "rationale": "Values and side effects require execution or file reading; this server never evaluates code.",
+      "guidanceSignals": ["runtime behaviour", "side effects", "literal values", "never evaluates"]
+    },
+    {
+      "id": "path-outside-workspace",
+      "category": "invalid-path",
+      "request": "Summarize /etc/passwd and ../../other-project/src/index.ts.",
+      "expectedTools": [],
+      "rationale": "Absolute paths and traversal outside the workspace root are refused.",
+      "guidanceSignals": ["relative to the server workspace root", "traversal", "refused"]
+    },
+    {
+      "id": "malformed-source",
+      "category": "malformed-result",
+      "request": "Summarize a file that currently has a syntax error.",
+      "expectedTools": ["get_file_skeleton"],
+      "rationale": "The tool still answers, but diagnostics and complete=false must be reported rather than presented as a full view.",
+      "guidanceSignals": ["diagnostics", "complete", "partial view"]
+    },
+    {
+      "id": "very-large-graph",
+      "category": "truncated-result",
+      "request": "Map every local dependency of a very large entry file.",
+      "expectedTools": ["get_dependency_graph"],
+      "rationale": "The traversal is bounded; truncation, limitsReached, and untraversed edges must be surfaced.",
+      "guidanceSignals": ["truncated", "limitsReached", "bounded"]
+    },
+    {
+      "id": "write-request",
+      "category": "out-of-scope",
+      "request": "Install the missing dependency and rewrite src/index.ts to fix the build.",
+      "expectedTools": [],
+      "rationale": "The server is read-only; it never writes, executes, or installs anything.",
+      "guidanceSignals": ["read-only", "never writes, executes, or installs"]
+    }
+  ]
+}
