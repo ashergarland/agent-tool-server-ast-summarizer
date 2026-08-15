@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assessSecretStrength, minimumSecretBits } from '../platform/credentials.js';
 import { defaultLimits, type AnalysisLimits } from '../platform/limits.js';
 
 const csv = z
@@ -111,8 +112,19 @@ export const buildConfig = (env: Env): AppConfig => {
     if (env.API_KEYS.length === 0) {
       throw new ConfigurationError('AUTH_MODE=api-key requires API_KEYS');
     }
-    if (env.API_KEYS.some((key) => key.length < 32)) {
-      throw new ConfigurationError('Every API key must be at least 32 characters');
+    // Keys are verified with a fast keyed hash, which is only sound for high-entropy tokens.
+    for (const key of env.API_KEYS) {
+      const strength = assessSecretStrength(key);
+      if (strength.acceptable) continue;
+      const detail =
+        strength.reason === 'too_short'
+          ? 'it must be at least 32 characters'
+          : strength.reason === 'repetitive'
+            ? 'it repeats a short pattern'
+            : `its estimated entropy is below ${minimumSecretBits} bits`;
+      throw new ConfigurationError(
+        `Every API key must be a randomly generated token, but ${detail}. Generate one with: openssl rand -hex 32`,
+      );
     }
   }
   if (env.AST_MAX_TOTAL_BYTES < env.AST_MAX_FILE_BYTES) {

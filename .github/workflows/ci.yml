@@ -38,7 +38,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IMAGE: agent-tool-server-ast-summarizer:test
-      API_KEY: ci-only-key-0000000000000000000000000000000000000000000000000000
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -48,6 +47,10 @@ jobs:
           load: true
           push: false
           tags: agent-tool-server-ast-summarizer:test
+
+      # Generated per run so no credential literal, however synthetic, lives in the repository.
+      - name: Generate an ephemeral API key
+        run: echo "API_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       - name: Create a tiny read-only fixture workspace
         run: |

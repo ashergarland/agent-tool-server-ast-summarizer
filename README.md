@@ -153,8 +153,9 @@ unpublished; they are evidence for a later cross-repository extraction.
 ## Security defaults
 
 - Production refuses `AUTH_MODE=disabled`; only the local stdio transport disables authentication.
-- API keys are compared as fixed-width keyed HMAC digests in constant time. Only non-reversible
-  12-character fingerprints are retained; raw keys are never logged.
+- API keys must be randomly generated (`openssl rand -hex 32`); configuration refuses short,
+  repetitive, or low-entropy values. They are compared as fixed-width keyed HMAC digests in constant
+  time, and only non-reversible 12-character fingerprints are retained. Raw keys are never logged.
 - Authentication is rate limited before and after credential verification.
 - One bounded error contract across transports: stable code, safe message, retryability, request ID,
   and limited details. No absolute path, source text, compiler internal, environment value, or stack
@@ -172,7 +173,8 @@ distributed gateway in front of the service if callers need one.
 ## Configuration
 
 See `.env.example`. Production requires `AUTH_MODE=api-key`, `API_KEYS`, and `AST_WORKSPACE_ROOT`.
-Multiple comma-separated keys support rotation.
+Multiple comma-separated keys support rotation. Each key must be a randomly generated token; see
+[`SECURITY.md`](SECURITY.md) for the credential requirements and the reasoning behind them.
 
 ## Deployment
 

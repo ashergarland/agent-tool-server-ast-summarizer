@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -6,7 +7,12 @@ import { Budget, defaultLimits, limitNames, resolveLimits } from '../../../src/p
 import { BoundedSemaphore } from '../../../src/platform/semaphore.js';
 import { WarningCollector } from '../../../src/platform/warnings.js';
 import { Deadline } from '../../../src/platform/cancellation.js';
-import { KeyedDigest, fingerprint } from '../../../src/platform/credentials.js';
+import {
+  assessSecretStrength,
+  fingerprint,
+  KeyedDigest,
+  minimumSecretBits,
+} from '../../../src/platform/credentials.js';
 
 describe('platform isolation', () => {
   it('keeps compiler and AST imports out of the reusable layer', async () => {
@@ -126,6 +132,31 @@ describe('credentials', () => {
     expect(digest.matches(digest.digest('secret-value'), 'secret-value')).toBe(true);
     expect(digest.matches(digest.digest('secret-value'), 'secret-valuf')).toBe(false);
     expect(digest.matches(digest.digest('secret-value'), '')).toBe(false);
+  });
+
+  it('uses an independent key per instance so a digest cannot be recomputed elsewhere', () => {
+    const secret = ['fixture', 'credential', 'material', 'for', 'digest', 'assertions'].join('-');
+    expect(new KeyedDigest().matches(new KeyedDigest().digest(secret), secret)).toBe(false);
+  });
+
+  it('refuses credentials that a fast keyed hash cannot protect', () => {
+    expect(assessSecretStrength('short')).toMatchObject({
+      acceptable: false,
+      reason: 'too_short',
+    });
+    expect(assessSecretStrength('a'.repeat(64))).toMatchObject({
+      acceptable: false,
+      bits: 0,
+      reason: 'repetitive',
+    });
+    expect(assessSecretStrength('abcdefgh'.repeat(8))).toMatchObject({
+      acceptable: false,
+      reason: 'repetitive',
+    });
+    const random = randomBytes(32).toString('hex');
+    const assessment = assessSecretStrength(random);
+    expect(assessment.acceptable).toBe(true);
+    expect(assessment.bits).toBeGreaterThanOrEqual(minimumSecretBits);
   });
 
   it('produces stable non-reversible fingerprints that never contain the secret', () => {

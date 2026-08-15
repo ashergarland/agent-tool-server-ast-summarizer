@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   buildConfig,
@@ -7,13 +8,14 @@ import {
   withoutBlankValues,
 } from '../../src/config/index.js';
 import { defaultLimits } from '../../src/platform/limits.js';
+import { testApiKey } from '../helpers/config.js';
 
 describe('configuration', () => {
   it('applies conservative analysis defaults and ignores blank optional values', () => {
     const config = loadConfig({
       NODE_ENV: 'test',
       AUTH_MODE: 'api-key',
-      API_KEYS: '12345678901234567890123456789012',
+      API_KEYS: testApiKey,
       PUBLIC_BASE_URL: '',
     });
     expect(config.analysis.limits).toEqual(defaultLimits);
@@ -47,10 +49,17 @@ describe('configuration', () => {
     ).toThrow(ConfigurationError);
   });
 
-  it('requires strong API keys', () => {
-    expect(() =>
-      buildConfig(envSchema.parse({ NODE_ENV: 'test', AUTH_MODE: 'api-key', API_KEYS: 'short' })),
-    ).toThrow('at least 32');
+  it('rejects API keys a fast keyed hash cannot safely protect', () => {
+    const withKey = (key: string) => (): unknown =>
+      buildConfig(envSchema.parse({ NODE_ENV: 'test', AUTH_MODE: 'api-key', API_KEYS: key }));
+
+    expect(withKey('short')).toThrow('at least 32 characters');
+    // 32 characters but no entropy at all: accepted before this check existed.
+    expect(withKey('a'.repeat(32))).toThrow('repeats a short pattern');
+    expect(withKey('1234567890'.repeat(4))).toThrow('repeats a short pattern');
+    expect(withKey(`abcabd${'ab'.repeat(14)}`)).toThrow('entropy');
+    expect(withKey(randomBytes(32).toString('hex'))).not.toThrow();
+    expect(withKey(testApiKey)).not.toThrow();
   });
 
   it('rejects an incoherent byte ceiling and invalid limit values', () => {
