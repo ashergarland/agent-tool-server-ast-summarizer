@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "ast-summarizer": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/node_modules/tsx/dist/cli.mjs",
+        "${workspaceFolder}/src/mcp/stdio.ts"
+      ],
+      "env": {
+        "AST_WORKSPACE_ROOT": "${workspaceFolder}"
+      }
+    }
+  }
+}

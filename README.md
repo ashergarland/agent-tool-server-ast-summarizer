@@ -14,17 +14,35 @@ declares and what it depends on without reading implementations.
 Both tools are read-only. The server never executes, writes, installs, clones, or generates source,
 and it never sends source to an external service.
 
+**The server reads source from its own filesystem; a caller only ever sends a path string.** That
+single rule decides which deployment shapes work. Read [`docs/use-cases.md`](docs/use-cases.md)
+before planning a deployment — in particular, pointing VS Code at a remote instance is not
+supported, because a remote server cannot see your local files.
+
 ## Quick start in VS Code
 
-Build once, then register the stdio server. The workspace defaults to the launch directory, so scope
-each instance explicitly if you use a multi-root workspace.
+### Analysing this repository
+
+Already configured. Install dependencies, reload the window, and the `ast-summarizer` server from
+[`.vscode/mcp.json`](.vscode/mcp.json) is available to the agent:
+
+```bash
+npm ci
+```
+
+It runs from TypeScript source through `tsx`, so there is no build step to forget and no risk of
+analysing a stale `dist/`.
+
+### Analysing a different repository
+
+Build once here, then register the built entry point in the repository you want to analyse:
 
 ```bash
 npm ci
 npm run build
 ```
 
-`.vscode/mcp.json` in the repository you want to analyse:
+`.vscode/mcp.json` in that repository:
 
 ```json
 {
@@ -39,9 +57,14 @@ npm run build
 }
 ```
 
+`${workspaceFolder}` scopes the server to that repository, so it reads those files and no others.
+
 stdio is a local, non-networked transport, so it runs with authentication disabled and writes
 nothing but protocol traffic to stdout. One process serves exactly one root; run one scoped
 instance per folder of a multi-root workspace.
+
+Try it by asking the agent: _"Use the skeleton tool on `src/ast/projector.ts` and tell me what it
+exports."_
 
 ## Workspace boundary
 
@@ -178,7 +201,11 @@ Multiple comma-separated keys support rotation. Each key must be a randomly gene
 
 ## Deployment
 
-Hosting is opt-in. The Azure Container Apps example provisions a user-assigned managed identity,
+Hosting is opt-in and narrow — read [`docs/use-cases.md`](docs/use-cases.md) first, because a hosted
+instance can only analyse a **copy** of source placed on its own filesystem, and that copy is stale
+the moment the original moves. It does not serve local development.
+
+The Azure Container Apps example provisions a user-assigned managed identity,
 ACR, Key Vault references, Log Analytics, Application Insights, scale-to-zero, probes, and alerts,
 and mounts a **pre-created read-only** source share when `workspaceStorageName` is supplied. Without
 it the app deploys and reports not ready. Follow [`docs/deployment.md`](docs/deployment.md).
