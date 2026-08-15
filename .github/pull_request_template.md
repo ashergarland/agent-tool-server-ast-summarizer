@@ -9,4 +9,5 @@
 - [ ] Bicep builds and lints
 - [ ] Metadata and generated OpenAPI are valid
 - [ ] No secrets, copied deployment identifiers, or unnecessary privileges were added
-- [ ] Write tools include dry-run and confirmation guardrails
+- [ ] Every tool remains read-only and confined to the canonical workspace root
+- [ ] New or changed analysis work is bounded by a limit and reports truncation honestly

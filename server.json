@@ -1,26 +1,10 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.ashergarland/agent-tool-server-ast-summarizer",
-  "description": "Local TypeScript and JavaScript AST skeleton and dependency graph tools.",
+  "description": "Read-only TypeScript and JavaScript declaration skeletons and local dependency graphs for one workspace.",
   "repository": {
     "url": "https://github.com/ashergarland/agent-tool-server-ast-summarizer",
     "source": "github"
   },
-  "version": "0.1.0",
-  "packages": [
-    {
-      "registryType": "npm",
-      "identifier": "agent-tool-server-ast-summarizer",
-      "version": "0.1.0",
-      "transport": {
-        "type": "stdio"
-      }
-    }
-  ],
-  "remotes": [
-    {
-      "type": "streamable-http",
-      "url": "https://tools.example.com/mcp"
-    }
-  ]
+  "version": "0.1.0"
 }

@@ -4,7 +4,7 @@ const application = createApplication();
 
 const shutdown = async (signal: string): Promise<void> => {
   application.logger.info({ signal }, 'shutting down');
-  await application.http.close();
+  await application.shutdown();
 };
 
 process.once('SIGINT', () => void shutdown('SIGINT'));

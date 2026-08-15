@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { assessSecretStrength, minimumSecretBits } from '../platform/credentials.js';
+import { defaultLimits, type AnalysisLimits } from '../platform/limits.js';
 
 const csv = z
   .string()
@@ -20,6 +22,9 @@ const booleanish = z.union([z.boolean(), z.string()]).transform((value, context)
   return z.NEVER;
 });
 
+const positive = (fallback: number): z.ZodDefault<z.ZodCoercedNumber> =>
+  z.coerce.number().int().min(1).default(fallback);
+
 export const withoutBlankValues = (source: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
   Object.fromEntries(
     Object.entries(source).filter(([, value]) => value === undefined || value.trim() !== ''),
@@ -38,8 +43,28 @@ export const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
   AUTH_MODE: z.enum(['api-key', 'disabled']).default('api-key'),
   API_KEYS: csv.default([]),
-  MUTATIONS_ENABLED: booleanish.default(false),
-  MUTATION_CONFIRMATION_REQUIRED: booleanish.default(true),
+
+  /** The single readable workspace. Required for any hosted HTTP deployment. */
+  AST_WORKSPACE_ROOT: z.string().min(1).optional(),
+  AST_MAX_FILE_BYTES: positive(defaultLimits.maxFileBytes),
+  AST_MAX_TOTAL_BYTES: positive(defaultLimits.maxTotalBytes),
+  AST_MAX_DEPTH: z.coerce.number().int().min(0).max(100).default(defaultLimits.maxDepth),
+  AST_MAX_FILES: positive(defaultLimits.maxFiles),
+  AST_MAX_EDGES: positive(defaultLimits.maxEdges),
+  AST_MAX_DECLARATIONS: positive(defaultLimits.maxDeclarations),
+  AST_MAX_MEMBERS: positive(defaultLimits.maxMembersPerDeclaration),
+  AST_MAX_JSDOC_CHARS: positive(defaultLimits.maxJsDocChars),
+  AST_MAX_RESULT_CHARS: positive(defaultLimits.maxResultChars),
+  AST_REQUEST_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(100)
+    .max(120_000)
+    .default(defaultLimits.requestTimeoutMs),
+  AST_MAX_CONCURRENT_JOBS: z.coerce.number().int().min(1).max(64).default(2),
+  AST_MAX_QUEUED_JOBS: z.coerce.number().int().min(0).max(1024).default(8),
+  AST_INCLUDE_PRIVATE_MEMBERS: booleanish.default(false),
+  AST_TYPE_INFERENCE: z.enum(['off', 'single-file']).default('single-file'),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -62,9 +87,16 @@ export interface AppConfig {
   readonly auth:
     | { readonly mode: 'disabled' }
     | { readonly mode: 'api-key'; readonly apiKeys: readonly string[] };
-  readonly guardrails: {
-    readonly mutationsEnabled: boolean;
-    readonly confirmationRequired: boolean;
+  readonly workspace: {
+    /** Undefined means no workspace was configured; the service starts but never reports ready. */
+    readonly root: string | undefined;
+  };
+  readonly analysis: {
+    readonly limits: AnalysisLimits;
+    readonly maxConcurrentJobs: number;
+    readonly maxQueuedJobs: number;
+    readonly includePrivateMembers: boolean;
+    readonly typeInference: 'off' | 'single-file';
   };
 }
 
@@ -80,9 +112,23 @@ export const buildConfig = (env: Env): AppConfig => {
     if (env.API_KEYS.length === 0) {
       throw new ConfigurationError('AUTH_MODE=api-key requires API_KEYS');
     }
-    if (env.API_KEYS.some((key) => key.length < 32)) {
-      throw new ConfigurationError('Every API key must be at least 32 characters');
+    // Keys are verified with a fast keyed hash, which is only sound for high-entropy tokens.
+    for (const key of env.API_KEYS) {
+      const strength = assessSecretStrength(key);
+      if (strength.acceptable) continue;
+      const detail =
+        strength.reason === 'too_short'
+          ? 'it must be at least 32 characters'
+          : strength.reason === 'repetitive'
+            ? 'it repeats a short pattern'
+            : `its estimated entropy is below ${minimumSecretBits} bits`;
+      throw new ConfigurationError(
+        `Every API key must be a randomly generated token, but ${detail}. Generate one with: openssl rand -hex 32`,
+      );
     }
+  }
+  if (env.AST_MAX_TOTAL_BYTES < env.AST_MAX_FILE_BYTES) {
+    throw new ConfigurationError('AST_MAX_TOTAL_BYTES must be at least AST_MAX_FILE_BYTES');
   }
   return {
     env: env.NODE_ENV,
@@ -103,9 +149,24 @@ export const buildConfig = (env: Env): AppConfig => {
       env.AUTH_MODE === 'disabled'
         ? { mode: 'disabled' }
         : { mode: 'api-key', apiKeys: env.API_KEYS },
-    guardrails: {
-      mutationsEnabled: env.MUTATIONS_ENABLED,
-      confirmationRequired: env.MUTATION_CONFIRMATION_REQUIRED,
+    workspace: { root: env.AST_WORKSPACE_ROOT },
+    analysis: {
+      limits: {
+        maxFileBytes: env.AST_MAX_FILE_BYTES,
+        maxTotalBytes: env.AST_MAX_TOTAL_BYTES,
+        maxDepth: env.AST_MAX_DEPTH,
+        maxFiles: env.AST_MAX_FILES,
+        maxEdges: env.AST_MAX_EDGES,
+        maxDeclarations: env.AST_MAX_DECLARATIONS,
+        maxMembersPerDeclaration: env.AST_MAX_MEMBERS,
+        maxJsDocChars: env.AST_MAX_JSDOC_CHARS,
+        maxResultChars: env.AST_MAX_RESULT_CHARS,
+        requestTimeoutMs: env.AST_REQUEST_TIMEOUT_MS,
+      },
+      maxConcurrentJobs: env.AST_MAX_CONCURRENT_JOBS,
+      maxQueuedJobs: env.AST_MAX_QUEUED_JOBS,
+      includePrivateMembers: env.AST_INCLUDE_PRIVATE_MEMBERS,
+      typeInference: env.AST_TYPE_INFERENCE,
     },
   };
 };
