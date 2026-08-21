@@ -1,5 +1,11 @@
+import { resolveCeilings } from '@agent-tool-platform/runtime/limits';
+
 /**
- * Deployment ceilings and per-request budgets. No compiler or AST imports.
+ * AST deployment ceilings and per-request budgets. No compiler or AST imports.
+ *
+ * The ceilings themselves are domain knowledge: the platform has no opinion about what a
+ * declaration or a dependency edge costs. Only the shape of "a caller may lower a ceiling but never
+ * raise it" is shared, which is why {@link resolveLimits} delegates to the platform helper.
  */
 
 export interface AnalysisLimits {
@@ -67,18 +73,8 @@ export const resolveLimits = (
   ceilings: AnalysisLimits,
   overrides: LimitOverrides = {},
 ): ResolvedLimits => {
-  const limits: Record<string, number> = { ...ceilings };
-  const clamped: LimitName[] = [];
-  for (const name of limitNames) {
-    const requested = overrides[name];
-    if (requested === undefined || !Number.isFinite(requested)) continue;
-    if (requested > ceilings[name]) {
-      clamped.push(name);
-      continue;
-    }
-    limits[name] = Math.max(0, Math.floor(requested));
-  }
-  return { limits: limits as unknown as AnalysisLimits, clamped: clamped.sort() };
+  const resolved = resolveCeilings<LimitName>(ceilings, overrides);
+  return { limits: resolved.values, clamped: resolved.clamped };
 };
 
 /**

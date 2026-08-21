@@ -1,17 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { BoundedSemaphore } from '@agent-tool-platform/runtime/concurrency';
 import { supportedExtensions } from '../../../src/ast/language.js';
 import { AstService } from '../../../src/ast/service.js';
-import { defaultLimits, type AnalysisLimits } from '../../../src/platform/limits.js';
-import type { MeasurementEvent } from '../../../src/platform/measurements.js';
-import { noopMeasurementSink } from '../../../src/platform/measurements.js';
-import { BoundedSemaphore } from '../../../src/platform/semaphore.js';
-import { Workspace } from '../../../src/platform/workspace.js';
+import { defaultLimits, type AnalysisLimits } from '../../../src/ast/limits.js';
+import { Workspace } from '../../../src/ast/workspace.js';
 import { createWorkspace } from '../../helpers/workspace.js';
 
 interface ServiceOptions {
   readonly limits?: Partial<AnalysisLimits>;
   readonly semaphore?: BoundedSemaphore;
-  readonly events?: MeasurementEvent[];
 }
 
 const serviceFor = (root: string, options: ServiceOptions = {}): AstService => {
@@ -26,9 +23,6 @@ const serviceFor = (root: string, options: ServiceOptions = {}): AstService => {
     semaphore: options.semaphore ?? new BoundedSemaphore(2, 4),
     includePrivateMembers: false,
     typeInference: 'off',
-    measurements: options.events
-      ? { record: (event) => options.events?.push(event) }
-      : noopMeasurementSink,
   });
 };
 
@@ -104,9 +98,11 @@ describe('analysis limits and admission control', () => {
     const root = await createWorkspace({ 'src/a.ts': wide(10) });
     const controller = new AbortController();
     controller.abort(new Error('caller went away'));
+    // The platform semaphore refuses admission for a caller that has already gone away rather than
+    // admitting the job and discovering the abort inside the deadline.
     await expect(
       serviceFor(root).getFileSkeleton({ path: 'src/a.ts', signal: controller.signal }),
-    ).rejects.toThrow('caller went away');
+    ).rejects.toMatchObject({ code: 'timeout', retryable: true });
 
     await expect(
       serviceFor(root, { limits: { requestTimeoutMs: 100 } }).getFileSkeleton({
@@ -127,24 +123,5 @@ describe('analysis limits and admission control', () => {
     const rejected = results.filter((result) => result.status === 'rejected');
     expect(rejected.length).toBeGreaterThan(0);
     expect(rejected[0]).toMatchObject({ reason: { code: 'busy', retryable: true } });
-  });
-
-  it('records only safe measurement fields', async () => {
-    const events: MeasurementEvent[] = [];
-    const root = await createWorkspace({ 'src/a.ts': wide(3) });
-    await serviceFor(root, { events }).getFileSkeleton({ path: 'src/a.ts' });
-    await serviceFor(root, { events })
-      .getFileSkeleton({ path: 'missing.ts' })
-      .catch(() => undefined);
-    expect(events).toHaveLength(2);
-    expect(events[0]).toMatchObject({
-      name: 'ast.analysis',
-      tool: 'get_file_skeleton',
-      outcome: 'ok',
-    });
-    expect(events[1]).toMatchObject({ outcome: 'error', errorCode: 'not_found' });
-    const serialized = JSON.stringify(events);
-    expect(serialized).not.toContain('src/a.ts');
-    expect(serialized).not.toContain(root);
   });
 });

@@ -3,13 +3,17 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { supportedExtensions } from '../../../src/ast/language.js';
-import { Workspace } from '../../../src/platform/workspace.js';
+import { Workspace } from '../../../src/ast/workspace.js';
 import { createWorkspace, trySymlink } from '../../helpers/workspace.js';
 
+/**
+ * AST workspace policy over the platform root boundary. Generic containment is proven by the
+ * testkit's root-boundary conformance; what is asserted here is the part AST owns.
+ */
 const workspaceFor = (root: string | undefined, maxFileBytes = 1_048_576): Workspace =>
   new Workspace({ root, maxFileBytes, allowedExtensions: supportedExtensions });
 
-describe('workspace boundary', () => {
+describe('AST workspace', () => {
   it('canonicalizes the root once and returns relative paths beneath it', async () => {
     const root = await createWorkspace({ 'src/index.ts': 'export const a = 1;\n' });
     const workspace = workspaceFor(root);
@@ -53,6 +57,17 @@ describe('workspace boundary', () => {
     await expect(workspace.resolveFile(escape)).rejects.toMatchObject({ code: 'forbidden' });
   });
 
+  it('keeps installed package directories out of scope', async () => {
+    const root = await createWorkspace({
+      'node_modules/left-pad/index.js': 'module.exports = 1;\n',
+      'a.ts': 'export const a = 1;\n',
+    });
+    const workspace = workspaceFor(root);
+    await expect(workspace.resolveFile('node_modules/left-pad/index.js')).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+  });
+
   it('rejects unsupported extensions and directories', async () => {
     const root = await createWorkspace({
       'notes.txt': 'text',
@@ -64,6 +79,8 @@ describe('workspace boundary', () => {
     });
     await expect(workspace.resolveFile('src')).rejects.toMatchObject({ code: 'bad_request' });
     await expect(workspace.resolveFile('missing.ts')).rejects.toMatchObject({ code: 'not_found' });
+    expect(workspace.isSupportedExtension('a.tsx')).toBe(true);
+    expect(workspace.isSupportedExtension('a.json')).toBe(false);
   });
 
   it('rejects a symbolic link that escapes the root', async () => {
@@ -85,10 +102,11 @@ describe('workspace boundary', () => {
     expect(file.relativePath).toBe('src/real.ts');
   });
 
-  it('reports an unconfigured or unusable root as not ready', async () => {
+  it('reports an unconfigured or unusable root in AST readiness terms', async () => {
     const unconfigured = workspaceFor(undefined);
     expect(unconfigured.configured).toBe(false);
     await expect(unconfigured.root()).rejects.toMatchObject({ code: 'not_ready' });
+    await expect(unconfigured.resolveFile('a.ts')).rejects.toMatchObject({ code: 'not_ready' });
     expect(await unconfigured.status()).toMatchObject({
       usable: false,
       reason: 'workspace_root_not_configured',

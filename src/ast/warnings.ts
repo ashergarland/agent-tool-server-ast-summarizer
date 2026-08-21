@@ -1,8 +1,10 @@
-import { boundedMessage } from '../errors.js';
+import { boundedMessage } from '@agent-tool-platform/runtime/errors';
 
 /**
- * Bounded, deduplicated diagnostics for callers. Warnings are aggregated by code so a pathological
- * file cannot produce an unbounded list.
+ * Bounded, deduplicated analysis warnings.
+ *
+ * The platform's `BoundedWarnings` collects plain strings. AST publishes `{ code, message, count }`
+ * in both tool output schemas, so the aggregation shape is part of the AST contract and stays here.
  */
 
 export interface Warning {

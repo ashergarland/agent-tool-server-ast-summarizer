@@ -1,21 +1,11 @@
-import { createApplication } from './app.js';
+import { startAgentToolApplication } from '@agent-tool-platform/runtime';
+import { astSummarizerCapability } from './capability.js';
 
-const application = createApplication();
-
-const shutdown = async (signal: string): Promise<void> => {
-  application.logger.info({ signal }, 'shutting down');
-  await application.shutdown();
-};
-
-process.once('SIGINT', () => void shutdown('SIGINT'));
-process.once('SIGTERM', () => void shutdown('SIGTERM'));
-
-try {
-  await application.http.listen({
-    host: application.config.http.host,
-    port: application.config.http.port,
-  });
-} catch (error) {
-  application.logger.fatal({ err: error }, 'startup failed');
-  process.exitCode = 1;
-}
+/**
+ * Hosted HTTP entry point.
+ *
+ * Configuration loading, logging, the tool registry, authentication, rate limiting, OpenAPI, MCP
+ * over Streamable HTTP, readiness, signal handling, request draining, and listener shutdown all
+ * belong to the platform. This file exists only to name the capability being served.
+ */
+await startAgentToolApplication(astSummarizerCapability);

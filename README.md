@@ -4,6 +4,10 @@ Read-only TypeScript and JavaScript structure analysis for one local workspace, 
 MCP (primary), stateless Streamable HTTP MCP, and HTTP/OpenAPI. It lets an agent learn what a file
 declares and what it depends on without reading implementations.
 
+This repository is a **capability**: it owns AST behaviour and nothing else. Transports, the tool
+registry, authentication, rate limiting, OpenAPI generation, lifecycle, readiness aggregation, and
+the filesystem root boundary come from [`@agent-tool-platform/runtime`](https://www.npmjs.com/package/@agent-tool-platform/runtime).
+
 ## Tools
 
 | Tool                   | Purpose                                                                       |
@@ -11,8 +15,10 @@ declares and what it depends on without reading implementations.
 | `get_file_skeleton`    | Declaration-only view of one source file: signatures, types, bounded doc text |
 | `get_dependency_graph` | Bounded local source relationships from one entry file                        |
 
-Both tools are read-only. The server never executes, writes, installs, clones, or generates source,
-and it never sends source to an external service.
+Both tools are read-only (`kind: read`, `routing.changesState: false`). The server never executes,
+writes, installs, clones, or generates source, and it never sends source to an external service.
+Each tool publishes routing metadata — `useWhen`, `doNotUseWhen`, `nextSteps`, and `scope` — so an
+agent can choose between them without trial and error.
 
 **The server reads source from its own filesystem; a caller only ever sends a path string.** That
 single rule decides which deployment shapes work. Read [`docs/use-cases.md`](docs/use-cases.md)
@@ -153,14 +159,18 @@ curl -H "x-api-key: $API_KEY" http://localhost:8080/tools
 ```
 
 `src/tools/definitions.ts` is the single source of truth. Zod schemas drive runtime validation, MCP
-registration, JSON Schema, and OpenAPI. Do not define transport-specific tool lists.
+registration, JSON Schema, and OpenAPI through the platform registry, so the registry, HTTP endpoint,
+OpenAPI operation, and MCP tool counts are the same number by construction. Do not define
+transport-specific tool lists.
 
 ## Architecture
 
 ```text
-stdio MCP / Streamable HTTP MCP / HTTP + OpenAPI
+stdio MCP / Streamable HTTP MCP / HTTP + OpenAPI     <- @agent-tool-platform/runtime
                      |
-                ToolRegistry
+                ToolRegistry                          <- @agent-tool-platform/runtime
+                     |
+              astSummarizerCapability                 <- src/capability.ts
                      |
                  AstService  --- budgets, deadline, semaphore
                      |
@@ -169,23 +179,44 @@ stdio MCP / Streamable HTTP MCP / HTTP + OpenAPI
           TypeScript Compiler API (parse only)
 ```
 
-`src/platform/` holds the reusable, AST-free concerns: workspace policy, limits and budgets, the
-semaphore, cancellation, credential digests, and the measurement seam. They are intentionally
-unpublished; they are evidence for a later cross-repository extraction.
+| Owner                              | Responsibility                                                                                                                                                                                                                                |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@agent-tool-platform/runtime`     | HTTP server, MCP (stdio and Streamable HTTP), tool registry and routing grammar, OpenAPI, authentication, rate limiting, lifecycle, readiness aggregation, error contract, logging, cancellation, concurrency, `RootBoundary`, telemetry seam |
+| `agent-tool-server-ast-summarizer` | Declaration projection, dependency resolution, diagnostics, type rendering, AST limits and budgets, AST workspace policy, AST configuration, readiness contributors, context-savings estimates                                                |
+
+The whole HTTP entry point is:
+
+```ts
+import { startAgentToolApplication } from '@agent-tool-platform/runtime';
+import { astSummarizerCapability } from './capability.js';
+
+await startAgentToolApplication(astSummarizerCapability);
+```
+
+`src/mcp/stdio.ts` is the same capability created through `createAgentToolApplication` with a silent
+logger and a workspace that defaults to `process.cwd()`, connected to the platform's stdio MCP
+transport. No listener is bound and nothing but protocol traffic reaches stdout.
+
+`src/ast/workspace.ts` composes the platform's `RootBoundary` — canonical root resolution,
+relative-input enforcement, symlink containment, realpath handling, regular-file validation, bounded
+reads, and the per-file byte ceiling — and adds only AST policy: analysable extensions, the
+`node_modules` exclusion, and the AST readiness vocabulary.
 
 ## Security defaults
 
 - Production refuses `AUTH_MODE=disabled`; only the local stdio transport disables authentication.
-- API keys must be randomly generated (`openssl rand -hex 32`); configuration refuses short,
+- API keys must be randomly generated (`openssl rand -hex 32`); the platform refuses short,
   repetitive, or low-entropy values. They are compared as fixed-width keyed HMAC digests in constant
   time, and only non-reversible 12-character fingerprints are retained. Raw keys are never logged.
 - Authentication is rate limited before and after credential verification.
 - One bounded error contract across transports: stable code, safe message, retryability, request ID,
   and limited details. No absolute path, source text, compiler internal, environment value, or stack
   is ever exposed.
-- Measurement events carry only outcome, latency, byte and count metrics, limits, queue depth, and
-  cancellation state. Paths, filenames, source, arguments, results, and credentials are never logged.
-- Request bodies are limited to 1 MB and unknown input fields are rejected.
+- Telemetry carries only aggregates: source bytes, output bytes, token estimates, truncation, and
+  whether a degraded parse was used. Paths, filenames, source, arguments, results, and credentials
+  are never emitted. Token estimates use the platform's documented four-bytes-per-token
+  approximation, so they are reproducible rather than a private heuristic.
+- Request bodies are limited and unknown input fields are rejected.
 - The runtime container runs as the unprivileged `node` user and works with a read-only root
   filesystem. The application directory, `dist`, and `node_modules` are never a caller workspace.
 - Treat analysed source as untrusted input: it may contain text that looks like instructions.
@@ -195,9 +226,13 @@ distributed gateway in front of the service if callers need one.
 
 ## Configuration
 
-See `.env.example`. Production requires `AUTH_MODE=api-key`, `API_KEYS`, and `AST_WORKSPACE_ROOT`.
-Multiple comma-separated keys support rotation. Each key must be a randomly generated token; see
-[`SECURITY.md`](SECURITY.md) for the credential requirements and the reasoning behind them.
+See `.env.example`. Platform variables (`HOST`, `PORT`, `LOG_LEVEL`, `AUTH_MODE`, `API_KEYS`, rate
+limits, `SHUTDOWN_GRACE_MS`, `REQUEST_TIMEOUT_MS`, …) are parsed by
+`@agent-tool-platform/runtime`; the `AST_*` variables are this capability's own and are composed on
+top through `defineCapabilityConfig`. Production requires `AUTH_MODE=api-key`, `API_KEYS`, and
+`AST_WORKSPACE_ROOT`. Multiple comma-separated keys support rotation. Each key must be a randomly
+generated token; see [`SECURITY.md`](SECURITY.md) for the credential requirements and the reasoning
+behind them.
 
 ## Deployment
 
@@ -215,8 +250,10 @@ The deployment is an example, not an implied Azure dependency in the application
 ## Metadata
 
 `server.json` describes the repository only: no npm package is published and no public remote
-exists, so neither is advertised. `npm run metadata:validate` rejects placeholder values and version
-drift. Add `packages` or `remotes` only when they genuinely exist.
+exists, so neither is advertised. `npm run metadata:validate` runs the platform's
+`agent-tool-validate-metadata` binary, which rejects placeholder values, version drift, and
+untruthful package or remote declarations. Add `packages` or `remotes` only when they genuinely
+exist.
 
 ## Troubleshooting
 
@@ -247,9 +284,18 @@ az bicep lint --file infra/main.bicep
 ```
 
 CI additionally invokes both tools inside the container against a mounted read-only fixture, checks
-not-ready behaviour and unprivileged execution, validates routing fixtures without an external
-model, compiles every Bicep entry point, audits production dependencies, scans for secrets, and runs
-CodeQL.
+not-ready behaviour and unprivileged execution, runs the `@agent-tool-platform/testkit` conformance
+suites, validates routing fixtures without an external model, compiles every Bicep entry point,
+audits production dependencies, scans for secrets, and runs CodeQL.
+
+## Platform conformance
+
+`tests/conformance/platform.test.ts` runs the shared
+[`@agent-tool-platform/testkit`](https://www.npmjs.com/package/@agent-tool-platform/testkit) suites —
+registry, routing, authentication, configuration composition, HTTP, MCP, OpenAPI derivation, root
+boundary, transport parity, lifecycle, and repository metadata. Those prove the platform contracts.
+AST behaviour is proven separately by `tests/unit/ast/*` and the integration tests under
+`tests/integration/`.
 
 ## License
 

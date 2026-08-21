@@ -15,7 +15,7 @@
     "dev": "tsx watch src/index.ts",
     "mcp:stdio": "node dist/mcp/stdio.js",
     "openapi:emit": "tsx scripts/emit-openapi.ts openapi.json",
-    "metadata:validate": "tsx scripts/validate-metadata.ts",
+    "metadata:validate": "agent-tool-validate-metadata --server server.json --package package.json --registry examples/central-registry-entry.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -30,14 +30,12 @@
     "url": "git+https://github.com/ashergarland/agent-tool-server-ast-summarizer.git"
   },
   "dependencies": {
-    "@fastify/rate-limit": "^11.2.0",
-    "@modelcontextprotocol/sdk": "1.30.0",
-    "fastify": "5.11.2",
-    "pino": "10.3.1",
+    "@agent-tool-platform/runtime": "0.1.1",
     "typescript": "5.9.3",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@agent-tool-platform/testkit": "0.1.1",
     "@types/node": "22.20.1",
     "@vitest/coverage-v8": "4.1.10",
     "eslint": "9.39.5",

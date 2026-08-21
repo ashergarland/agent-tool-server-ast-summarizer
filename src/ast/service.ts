@@ -1,15 +1,9 @@
-import type { MeasurementSink } from '../platform/measurements.js';
-import { Deadline } from '../platform/cancellation.js';
-import {
-  Budget,
-  resolveLimits,
-  type AnalysisLimits,
-  type LimitOverrides,
-} from '../platform/limits.js';
-import type { BoundedSemaphore } from '../platform/semaphore.js';
-import { WarningCollector, type Warning } from '../platform/warnings.js';
-import type { Workspace } from '../platform/workspace.js';
-import { limitExceeded } from '../errors.js';
+import { Deadline } from '@agent-tool-platform/runtime/cancellation';
+import type { BoundedSemaphore } from '@agent-tool-platform/runtime/concurrency';
+import { limitExceeded } from '@agent-tool-platform/runtime/errors';
+import { Budget, resolveLimits, type AnalysisLimits, type LimitOverrides } from './limits.js';
+import { WarningCollector, type Warning } from './warnings.js';
+import type { Workspace } from './workspace.js';
 import { parseDiagnosticsOf, type ParseDiagnostic } from './diagnostics.js';
 import {
   analyseDependencyGraph,
@@ -33,7 +27,6 @@ export interface AstServiceOptions {
   readonly semaphore: BoundedSemaphore;
   readonly includePrivateMembers: boolean;
   readonly typeInference: TypeInferenceMode;
-  readonly measurements: MeasurementSink;
 }
 
 export interface AnalysisRequest {
@@ -118,7 +111,7 @@ export class AstService {
   }
 
   public async getFileSkeleton(request: SkeletonRequest): Promise<FileSkeleton> {
-    return this.run('get_file_skeleton', request, async (budget, warnings, cancellation) => {
+    return this.run(request, async (budget, warnings, cancellation) => {
       const file = await this.options.workspace.resolveFile(request.path);
       if (!budget.tryConsumeBytes(file.sizeBytes)) {
         throw limitExceeded('The source file exceeds the cumulative byte budget for one request', {
@@ -147,31 +140,24 @@ export class AstService {
       const projection = projector.project();
       const complete = diagnostics.length === 0 && !budget.truncated;
       return {
-        result: {
-          path: file.relativePath,
-          language: languageOf(file.realPath),
-          skeleton: projection.text,
-          originalLines: countLines(source.text),
-          skeletonLines: countLines(projection.text),
-          truncated: budget.truncated,
-          complete,
-          limitsReached: [...budget.limitsReached],
-          warnings: [...warnings.list()],
-          omissions: [...projection.omissions],
-          diagnostics: [...diagnostics],
-          metrics: {
-            sourceBytes: source.bytes,
-            sourceLines: countLines(source.text),
-            skeletonChars: projection.text.length,
-            declarationsDiscovered: projection.declarationsDiscovered,
-            declarationsReturned: projection.declarationsReturned,
-            declarationsOmitted: projection.declarationsOmitted,
-          },
-        },
-        measurement: {
+        path: file.relativePath,
+        language: languageOf(file.realPath),
+        skeleton: projection.text,
+        originalLines: countLines(source.text),
+        skeletonLines: countLines(projection.text),
+        truncated: budget.truncated,
+        complete,
+        limitsReached: [...budget.limitsReached],
+        warnings: [...warnings.list()],
+        omissions: [...projection.omissions],
+        diagnostics: [...diagnostics],
+        metrics: {
           sourceBytes: source.bytes,
-          resultChars: projection.text.length,
+          sourceLines: countLines(source.text),
+          skeletonChars: projection.text.length,
+          declarationsDiscovered: projection.declarationsDiscovered,
           declarationsReturned: projection.declarationsReturned,
+          declarationsOmitted: projection.declarationsOmitted,
         },
       };
     });
@@ -182,65 +168,49 @@ export class AstService {
       ...request.limits,
       ...(request.maxDepth === undefined ? {} : { maxDepth: request.maxDepth }),
     };
-    return this.run(
-      'get_dependency_graph',
-      { ...request, limits: overrides },
-      async (budget, warnings, cancellation) => {
-        const root = await this.options.workspace.root();
-        const entry = await this.options.workspace.resolveFile(request.path);
-        const analysis = await analyseDependencyGraph(entry, {
-          workspace: this.options.workspace,
-          root,
-          budget,
-          warnings,
-          cancellation,
-          maxDiagnostics,
-        });
-        const discovered =
-          analysis.files.length + analysis.dependencies.filter((edge) => !edge.traversed).length;
-        return {
-          result: {
-            entry: analysis.entry,
-            files: [...analysis.files],
-            dependencies: [...analysis.dependencies],
-            external: [...analysis.external],
-            unresolved: [...analysis.unresolved],
-            configPath: analysis.configPath,
-            diagnostics: [...analysis.diagnostics],
-            truncated: budget.truncated,
-            complete: analysis.diagnostics.length === 0 && !budget.truncated,
-            limitsReached: [...budget.limitsReached],
-            warnings: [...warnings.list()],
-            metrics: {
-              sourceBytes: analysis.sourceBytes,
-              filesDiscovered: discovered,
-              filesReturned: analysis.files.length,
-              resolvedEdges: analysis.dependencies.length,
-              externalEdges: analysis.external.length,
-              unresolvedEdges: analysis.unresolved.length,
-              maxDepth: budget.limits.maxDepth,
-            },
-          },
-          measurement: {
-            sourceBytes: analysis.sourceBytes,
-            filesVisited: analysis.files.length,
-          },
-        };
-      },
-    );
+    return this.run({ ...request, limits: overrides }, async (budget, warnings, cancellation) => {
+      const root = await this.options.workspace.root();
+      const entry = await this.options.workspace.resolveFile(request.path);
+      const analysis = await analyseDependencyGraph(entry, {
+        workspace: this.options.workspace,
+        root,
+        budget,
+        warnings,
+        cancellation,
+        maxDiagnostics,
+      });
+      const discovered =
+        analysis.files.length + analysis.dependencies.filter((edge) => !edge.traversed).length;
+      return {
+        entry: analysis.entry,
+        files: [...analysis.files],
+        dependencies: [...analysis.dependencies],
+        external: [...analysis.external],
+        unresolved: [...analysis.unresolved],
+        configPath: analysis.configPath,
+        diagnostics: [...analysis.diagnostics],
+        truncated: budget.truncated,
+        complete: analysis.diagnostics.length === 0 && !budget.truncated,
+        limitsReached: [...budget.limitsReached],
+        warnings: [...warnings.list()],
+        metrics: {
+          sourceBytes: analysis.sourceBytes,
+          filesDiscovered: discovered,
+          filesReturned: analysis.files.length,
+          resolvedEdges: analysis.dependencies.length,
+          externalEdges: analysis.external.length,
+          unresolvedEdges: analysis.unresolved.length,
+          maxDepth: budget.limits.maxDepth,
+        },
+      };
+    });
   }
 
-  /** Applies admission control, the deadline, limit resolution, and safe measurement. */
+  /** Applies admission control, the deadline, and limit resolution to one analysis. */
   private async run<T extends AnalysisEnvelope>(
-    tool: string,
     request: AnalysisRequest,
-    work: (
-      budget: Budget,
-      warnings: WarningCollector,
-      cancellation: Deadline,
-    ) => Promise<{ result: T; measurement: Record<string, number> }>,
+    work: (budget: Budget, warnings: WarningCollector, cancellation: Deadline) => Promise<T>,
   ): Promise<T> {
-    const startedAt = Date.now();
     const { limits, clamped } = resolveLimits(this.options.ceilings, request.limits);
     const budget = new Budget(limits);
     const warnings = new WarningCollector();
@@ -250,39 +220,16 @@ export class AstService {
         `A requested limit exceeded the deployment ceiling and was clamped: ${name}`,
       );
     }
-    try {
-      const outcome = await this.options.semaphore.run(async () => {
+    return this.options.semaphore.run(
+      async () => {
         const deadline = new Deadline(limits.requestTimeoutMs, request.signal);
         try {
           return await work(budget, warnings, deadline);
         } finally {
           deadline.dispose();
         }
-      });
-      this.options.measurements.record({
-        name: 'ast.analysis',
-        tool,
-        outcome: 'ok',
-        durationMs: Date.now() - startedAt,
-        truncated: outcome.result.truncated,
-        limitsReached: outcome.result.limitsReached,
-        queueDepth: this.options.semaphore.stats.queued,
-        activeJobs: this.options.semaphore.stats.active,
-        ...outcome.measurement,
-      });
-      return outcome.result;
-    } catch (error) {
-      const code = (error as { code?: string }).code;
-      this.options.measurements.record({
-        name: 'ast.analysis',
-        tool,
-        outcome: code === 'busy' ? 'busy' : code === 'timeout' ? 'timeout' : 'error',
-        errorCode: typeof code === 'string' ? code : 'internal_error',
-        durationMs: Date.now() - startedAt,
-        queueDepth: this.options.semaphore.stats.queued,
-        activeJobs: this.options.semaphore.stats.active,
-      });
-      throw error;
-    }
+      },
+      { signal: request.signal },
+    );
   }
 }

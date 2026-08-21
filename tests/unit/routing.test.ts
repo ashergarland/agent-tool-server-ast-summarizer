@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { createToolRegistry } from '@agent-tool-platform/runtime/tools';
+import { astTools } from '../../src/tools/definitions.js';
 import { serverInstructions } from '../../src/tools/guidance.js';
-import { createToolRegistry } from '../../src/tools/registry.js';
 
 const fixtureSchema = z.object({
   requiredCategories: z.array(z.string().min(1)).min(1),
@@ -24,8 +25,8 @@ const fixtures = fixtureSchema.parse(
   JSON.parse(await readFile(new URL('../fixtures/routing.json', import.meta.url), 'utf8')),
 );
 
-const registry = createToolRegistry();
-const toolNames = new Set(registry.list().map((tool) => tool.name));
+const registry = createToolRegistry(astTools);
+const toolNames = new Set(registry.names());
 const publishedText = [
   serverInstructions,
   ...registry.list().map((tool) => `${tool.summary} ${tool.description}`),
@@ -66,11 +67,33 @@ describe('routing fixtures', () => {
     expect(serverInstructions.length).toBeLessThan(2_000);
     for (const tool of registry.list()) {
       expect(tool.description.length).toBeGreaterThan(200);
-      expect(tool.description.length).toBeLessThan(1_200);
-      for (const required of ['use', 'do not use', 'prerequisite', 'limitation', 'read-only']) {
+      expect(tool.description.length).toBeLessThan(2_000);
+      for (const required of ['use when', 'do not use when', 'prerequisite', 'limitation']) {
         expect(tool.description.toLowerCase()).toContain(required);
       }
     }
+  });
+
+  it('declares read-only, closed-world routing metadata for every tool', () => {
+    for (const tool of registry.list()) {
+      expect(tool.kind).toBe('read');
+      expect(tool.routing.changesState).toBe(false);
+      // openWorldHint stays false: one canonical root, node_modules excluded, packages never read.
+      expect(tool.annotations).toEqual({
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
+      expect(tool.routing.useWhen.length).toBeGreaterThanOrEqual(3);
+      expect(tool.routing.doNotUseWhen.length).toBeGreaterThanOrEqual(2);
+      expect(tool.description).toContain('State: read-only.');
+    }
+  });
+
+  it('points each tool at the other as a next step', () => {
+    expect(registry.get('get_file_skeleton').routing.nextSteps).toContain('get_dependency_graph');
+    expect(registry.get('get_dependency_graph').routing.nextSteps).toContain('get_file_skeleton');
   });
 
   it('describes every input field an agent must supply', () => {

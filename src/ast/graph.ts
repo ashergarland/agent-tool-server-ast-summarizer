@@ -1,9 +1,9 @@
 import { relative } from 'node:path';
 import ts from 'typescript';
-import type { Cancellation } from '../platform/cancellation.js';
-import type { Budget } from '../platform/limits.js';
-import type { WarningCollector } from '../platform/warnings.js';
-import { extensionOf, type Workspace, type WorkspaceFile } from '../platform/workspace.js';
+import type { Cancellation } from '@agent-tool-platform/runtime/cancellation';
+import type { Budget } from './limits.js';
+import type { WarningCollector } from './warnings.js';
+import { extensionOf, type Workspace, type WorkspaceFile } from './workspace.js';
 import { parseDiagnosticCount, parseDiagnosticsOf, type ParseDiagnostic } from './diagnostics.js';
 import { parseSourceFile, supportedExtensions } from './language.js';
 import { loadProjectConfiguration } from './project-config.js';
