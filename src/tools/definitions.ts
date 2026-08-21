@@ -122,7 +122,13 @@ export const getFileSkeletonTool = defineTool<
     scope: 'one file, addressed by a path relative to the server workspace root',
     changesState: false,
   },
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+  // Closed world: one canonical local root, `node_modules` excluded, packages never traversed.
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   inputSchema: skeletonInput,
   outputSchema: skeletonOutput,
   handler: (input, services, context) =>
@@ -238,7 +244,13 @@ export const getDependencyGraphTool = defineTool<
     scope: 'one entry file and the local files it reaches, inside the server workspace root',
     changesState: false,
   },
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+  // Closed world: packages are reported as external but never traversed or read.
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   inputSchema: graphInput,
   outputSchema: graphOutput,
   handler: (input, services, context) =>

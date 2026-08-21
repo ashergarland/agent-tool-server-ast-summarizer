@@ -74,11 +74,17 @@ describe('routing fixtures', () => {
     }
   });
 
-  it('declares read-only routing metadata for every tool', () => {
+  it('declares read-only, closed-world routing metadata for every tool', () => {
     for (const tool of registry.list()) {
       expect(tool.kind).toBe('read');
       expect(tool.routing.changesState).toBe(false);
-      expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+      // openWorldHint stays false: one canonical root, node_modules excluded, packages never read.
+      expect(tool.annotations).toEqual({
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
       expect(tool.routing.useWhen.length).toBeGreaterThanOrEqual(3);
       expect(tool.routing.doNotUseWhen.length).toBeGreaterThanOrEqual(2);
       expect(tool.description).toContain('State: read-only.');

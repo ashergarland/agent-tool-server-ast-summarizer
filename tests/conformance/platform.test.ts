@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createToolRegistry } from '@agent-tool-platform/runtime/tools';
 import {
+  connectInMemoryMcpClient,
   runAuthConformance,
   runConfigConformance,
   runHttpConformance,
@@ -170,6 +171,25 @@ describe('platform conformance', () => {
       registryEntry: await load('../../examples/central-registry-entry.json'),
     });
     expect(result.failures).toEqual([]);
+  });
+
+  it('publishes closed-world read-only annotations over MCP', async () => {
+    const app = await application();
+    const connected = await connectInMemoryMcpClient(app.createStdioServer());
+    try {
+      const listed = await connected.client.listTools();
+      expect(listed.tools).toHaveLength(2);
+      for (const tool of listed.tools) {
+        expect(tool.annotations).toMatchObject({
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        });
+      }
+    } finally {
+      await connected.close();
+    }
   });
 
   it('exposes exactly the two AST tools through the platform capability', () => {
