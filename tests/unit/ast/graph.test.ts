@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { supportedExtensions } from '../../../src/ast/language.js';
 import { AstService } from '../../../src/ast/service.js';
-import { defaultLimits, type AnalysisLimits } from '../../../src/platform/limits.js';
-import { noopMeasurementSink } from '../../../src/platform/measurements.js';
-import { BoundedSemaphore } from '../../../src/platform/semaphore.js';
-import { Workspace } from '../../../src/platform/workspace.js';
+import { defaultLimits, type AnalysisLimits } from '../../../src/ast/limits.js';
+import { BoundedSemaphore } from '@agent-tool-platform/runtime/concurrency';
+import { Workspace } from '../../../src/ast/workspace.js';
 import { createWorkspace, trySymlink } from '../../helpers/workspace.js';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -22,7 +21,6 @@ const serviceFor = (root: string, overrides: Partial<AnalysisLimits> = {}): AstS
     semaphore: new BoundedSemaphore(2, 4),
     includePrivateMembers: false,
     typeInference: 'off',
-    measurements: noopMeasurementSink,
   });
 };
 

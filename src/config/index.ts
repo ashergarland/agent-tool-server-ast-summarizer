@@ -1,60 +1,38 @@
 import { z } from 'zod';
-import { assessSecretStrength, minimumSecretBits } from '../platform/credentials.js';
-import { defaultLimits, type AnalysisLimits } from '../platform/limits.js';
+import {
+  ConfigurationError,
+  defineCapabilityConfig,
+  loadCapabilityConfig,
+  positiveInteger,
+  strictBoolean,
+  type PlatformConfig,
+} from '@agent-tool-platform/runtime/config';
+import { defaultLimits, type AnalysisLimits } from '../ast/limits.js';
+import { astManifest } from '../manifest.js';
 
-const csv = z
-  .string()
-  .transform((value) =>
-    value
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean),
-  )
-  .pipe(z.array(z.string().min(1)))
-  .catch([] as string[]);
+/**
+ * AST capability configuration.
+ *
+ * Service identity, HTTP transport, logging, authentication, rate limiting, shutdown, and the
+ * shared request deadline are platform concerns and are parsed by the platform schema. Everything
+ * declared here is genuinely about analysing source: where the workspace is, and what one analysis
+ * is allowed to cost.
+ */
 
-const booleanish = z.union([z.boolean(), z.string()]).transform((value, context) => {
-  if (typeof value === 'boolean') return value;
-  const normalized = value.trim().toLowerCase();
-  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
-  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
-  context.addIssue({ code: 'custom', message: 'Expected a boolean value' });
-  return z.NEVER;
-});
+export type TypeInferenceMode = 'off' | 'single-file';
 
-const positive = (fallback: number): z.ZodDefault<z.ZodCoercedNumber> =>
-  z.coerce.number().int().min(1).default(fallback);
-
-export const withoutBlankValues = (source: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
-  Object.fromEntries(
-    Object.entries(source).filter(([, value]) => value === undefined || value.trim() !== ''),
-  );
-
-export const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().min(1).max(65_535).default(8080),
-  HOST: z.string().min(1).default('0.0.0.0'),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  SERVICE_NAME: z.string().min(1).default('agent-tool-server-ast-summarizer'),
-  SERVICE_VERSION: z.string().min(1).default('0.0.0-dev'),
-  GIT_SHA: z.string().default('unknown'),
-  PUBLIC_BASE_URL: z.url().optional(),
-  RATE_LIMIT_MAX: z.coerce.number().int().min(0).default(120),
-  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
-  AUTH_MODE: z.enum(['api-key', 'disabled']).default('api-key'),
-  API_KEYS: csv.default([]),
-
+export const astEnvSchema = z.object({
   /** The single readable workspace. Required for any hosted HTTP deployment. */
   AST_WORKSPACE_ROOT: z.string().min(1).optional(),
-  AST_MAX_FILE_BYTES: positive(defaultLimits.maxFileBytes),
-  AST_MAX_TOTAL_BYTES: positive(defaultLimits.maxTotalBytes),
+  AST_MAX_FILE_BYTES: positiveInteger(defaultLimits.maxFileBytes),
+  AST_MAX_TOTAL_BYTES: positiveInteger(defaultLimits.maxTotalBytes),
   AST_MAX_DEPTH: z.coerce.number().int().min(0).max(100).default(defaultLimits.maxDepth),
-  AST_MAX_FILES: positive(defaultLimits.maxFiles),
-  AST_MAX_EDGES: positive(defaultLimits.maxEdges),
-  AST_MAX_DECLARATIONS: positive(defaultLimits.maxDeclarations),
-  AST_MAX_MEMBERS: positive(defaultLimits.maxMembersPerDeclaration),
-  AST_MAX_JSDOC_CHARS: positive(defaultLimits.maxJsDocChars),
-  AST_MAX_RESULT_CHARS: positive(defaultLimits.maxResultChars),
+  AST_MAX_FILES: positiveInteger(defaultLimits.maxFiles),
+  AST_MAX_EDGES: positiveInteger(defaultLimits.maxEdges),
+  AST_MAX_DECLARATIONS: positiveInteger(defaultLimits.maxDeclarations),
+  AST_MAX_MEMBERS: positiveInteger(defaultLimits.maxMembersPerDeclaration),
+  AST_MAX_JSDOC_CHARS: positiveInteger(defaultLimits.maxJsDocChars),
+  AST_MAX_RESULT_CHARS: positiveInteger(defaultLimits.maxResultChars),
   AST_REQUEST_TIMEOUT_MS: z.coerce
     .number()
     .int()
@@ -63,30 +41,13 @@ export const envSchema = z.object({
     .default(defaultLimits.requestTimeoutMs),
   AST_MAX_CONCURRENT_JOBS: z.coerce.number().int().min(1).max(64).default(2),
   AST_MAX_QUEUED_JOBS: z.coerce.number().int().min(0).max(1024).default(8),
-  AST_INCLUDE_PRIVATE_MEMBERS: booleanish.default(false),
+  AST_INCLUDE_PRIVATE_MEMBERS: strictBoolean.default(false),
   AST_TYPE_INFERENCE: z.enum(['off', 'single-file']).default('single-file'),
 });
 
-export type Env = z.infer<typeof envSchema>;
+export type AstEnv = z.infer<typeof astEnvSchema>;
 
-export interface AppConfig {
-  readonly env: Env['NODE_ENV'];
-  readonly isProduction: boolean;
-  readonly service: {
-    readonly name: string;
-    readonly version: string;
-    readonly gitSha: string;
-    readonly publicBaseUrl: string | undefined;
-  };
-  readonly http: {
-    readonly host: string;
-    readonly port: number;
-    readonly rateLimit: { readonly max: number; readonly windowMs: number };
-  };
-  readonly logLevel: Env['LOG_LEVEL'];
-  readonly auth:
-    | { readonly mode: 'disabled' }
-    | { readonly mode: 'api-key'; readonly apiKeys: readonly string[] };
+export interface AstConfig extends PlatformConfig {
   readonly workspace: {
     /** Undefined means no workspace was configured; the service starts but never reports ready. */
     readonly root: string | undefined;
@@ -96,59 +57,14 @@ export interface AppConfig {
     readonly maxConcurrentJobs: number;
     readonly maxQueuedJobs: number;
     readonly includePrivateMembers: boolean;
-    readonly typeInference: 'off' | 'single-file';
+    readonly typeInference: TypeInferenceMode;
   };
 }
 
-export class ConfigurationError extends Error {
-  public override readonly name = 'ConfigurationError';
-}
-
-export const buildConfig = (env: Env): AppConfig => {
-  if (env.AUTH_MODE === 'disabled' && env.NODE_ENV === 'production') {
-    throw new ConfigurationError('AUTH_MODE=disabled is not permitted in production');
-  }
-  if (env.AUTH_MODE === 'api-key') {
-    if (env.API_KEYS.length === 0) {
-      throw new ConfigurationError('AUTH_MODE=api-key requires API_KEYS');
-    }
-    // Keys are verified with a fast keyed hash, which is only sound for high-entropy tokens.
-    for (const key of env.API_KEYS) {
-      const strength = assessSecretStrength(key);
-      if (strength.acceptable) continue;
-      const detail =
-        strength.reason === 'too_short'
-          ? 'it must be at least 32 characters'
-          : strength.reason === 'repetitive'
-            ? 'it repeats a short pattern'
-            : `its estimated entropy is below ${minimumSecretBits} bits`;
-      throw new ConfigurationError(
-        `Every API key must be a randomly generated token, but ${detail}. Generate one with: openssl rand -hex 32`,
-      );
-    }
-  }
-  if (env.AST_MAX_TOTAL_BYTES < env.AST_MAX_FILE_BYTES) {
-    throw new ConfigurationError('AST_MAX_TOTAL_BYTES must be at least AST_MAX_FILE_BYTES');
-  }
-  return {
-    env: env.NODE_ENV,
-    isProduction: env.NODE_ENV === 'production',
-    service: {
-      name: env.SERVICE_NAME,
-      version: env.SERVICE_VERSION,
-      gitSha: env.GIT_SHA,
-      publicBaseUrl: env.PUBLIC_BASE_URL,
-    },
-    http: {
-      host: env.HOST,
-      port: env.PORT,
-      rateLimit: { max: env.RATE_LIMIT_MAX, windowMs: env.RATE_LIMIT_WINDOW_MS },
-    },
-    logLevel: env.LOG_LEVEL,
-    auth:
-      env.AUTH_MODE === 'disabled'
-        ? { mode: 'disabled' }
-        : { mode: 'api-key', apiKeys: env.API_KEYS },
+export const astConfigSpec = defineCapabilityConfig<typeof astEnvSchema, AstConfig>({
+  schema: astEnvSchema,
+  build: ({ base, env }) => ({
+    ...base,
     workspace: { root: env.AST_WORKSPACE_ROOT },
     analysis: {
       limits: {
@@ -168,17 +84,19 @@ export const buildConfig = (env: Env): AppConfig => {
       includePrivateMembers: env.AST_INCLUDE_PRIVATE_MEMBERS,
       typeInference: env.AST_TYPE_INFERENCE,
     },
-  };
+  }),
+  /** A per-file ceiling above the cumulative ceiling can never be honoured, so refuse it early. */
+  validate: (config) => {
+    if (config.analysis.limits.maxTotalBytes < config.analysis.limits.maxFileBytes) {
+      throw new ConfigurationError('AST_MAX_TOTAL_BYTES must be at least AST_MAX_FILE_BYTES');
+    }
+  },
+});
+
+export const astConfigDefaults = {
+  serviceName: astManifest.name,
+  serviceVersion: astManifest.version,
 };
 
-export const loadConfig = (source: NodeJS.ProcessEnv = process.env): AppConfig => {
-  const parsed = envSchema.safeParse(withoutBlankValues(source));
-  if (!parsed.success) {
-    throw new ConfigurationError(
-      `Invalid environment configuration: ${parsed.error.issues
-        .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
-        .join('; ')}`,
-    );
-  }
-  return buildConfig(parsed.data);
-};
+export const loadAstConfig = (source: NodeJS.ProcessEnv = process.env): AstConfig =>
+  loadCapabilityConfig({ defaults: astConfigDefaults, spec: astConfigSpec, source });

@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { extensionOf } from '../platform/workspace.js';
+import { extensionOf } from '@agent-tool-platform/runtime/fs';
 
 export const supportedExtensions: ReadonlySet<string> = new Set([
   '.ts',

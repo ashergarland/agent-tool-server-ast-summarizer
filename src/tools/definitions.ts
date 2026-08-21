@@ -1,38 +1,8 @@
 import { z } from 'zod';
+import { defineTool } from '@agent-tool-platform/runtime/tools';
 import { omissionKinds } from '../ast/projector.js';
-import type { Services } from '../services/index.js';
+import type { AstServices } from '../services/index.js';
 import { graphDescription, skeletonDescription } from './guidance.js';
-
-export interface ToolInvocationContext {
-  readonly requestId: string;
-  readonly principal: string;
-  readonly signal?: AbortSignal;
-}
-
-/** Every tool in this server is read-only; there is no mutation path. */
-export type ToolKind = 'read';
-
-export interface ToolDefinition<
-  InputSchema extends z.ZodType = z.ZodType,
-  OutputSchema extends z.ZodType = z.ZodType,
-> {
-  readonly name: string;
-  readonly title: string;
-  readonly summary: string;
-  readonly description: string;
-  readonly kind: ToolKind;
-  readonly inputSchema: InputSchema;
-  readonly outputSchema: OutputSchema;
-  readonly handler: (
-    input: z.output<InputSchema>,
-    services: Services,
-    context: ToolInvocationContext,
-  ) => Promise<z.output<OutputSchema>>;
-}
-
-export const defineTool = <InputSchema extends z.ZodType, OutputSchema extends z.ZodType>(
-  definition: ToolDefinition<InputSchema, OutputSchema>,
-): ToolDefinition<InputSchema, OutputSchema> => definition;
 
 const filePathSchema = z
   .string()
@@ -128,12 +98,31 @@ const skeletonOutput = z.object({
   }),
 });
 
-export const getFileSkeletonTool = defineTool({
+export const getFileSkeletonTool = defineTool<
+  AstServices,
+  typeof skeletonInput,
+  typeof skeletonOutput
+>({
   name: 'get_file_skeleton',
   title: 'Get file skeleton',
   summary: 'Reduce one source file to its declarations without any implementation.',
   description: skeletonDescription,
   kind: 'read',
+  routing: {
+    useWhen: [
+      "understanding one source file's declarations and API shape",
+      'inspecting signatures, types, and documentation without implementation bodies',
+      'reducing a large source file before an agent reasons about it',
+    ],
+    doNotUseWhen: [
+      'implementation details, algorithms, literal values, or exact runtime behaviour are required',
+      'dependency traversal is the primary goal, in which case use get_dependency_graph',
+    ],
+    nextSteps: ['get_dependency_graph'],
+    scope: 'one file, addressed by a path relative to the server workspace root',
+    changesState: false,
+  },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   inputSchema: skeletonInput,
   outputSchema: skeletonOutput,
   handler: (input, services, context) =>
@@ -143,7 +132,7 @@ export const getFileSkeletonTool = defineTool({
         ? {}
         : { includePrivateMembers: input.includePrivateMembers }),
       ...(input.limits === undefined ? {} : { limits: input.limits }),
-      ...(context.signal === undefined ? {} : { signal: context.signal }),
+      signal: context.signal,
     }),
 });
 
@@ -225,12 +214,31 @@ const graphOutput = z.object({
   }),
 });
 
-export const getDependencyGraphTool = defineTool({
+export const getDependencyGraphTool = defineTool<
+  AstServices,
+  typeof graphInput,
+  typeof graphOutput
+>({
   name: 'get_dependency_graph',
   title: 'Get dependency graph',
   summary: 'Map local source relationships from one entry file.',
   description: graphDescription,
   kind: 'read',
+  routing: {
+    useWhen: [
+      'tracing local imports, re-exports, and requires from one entry file',
+      'discovering which local source files relate to each other',
+      'deciding which source files should be inspected next',
+    ],
+    doNotUseWhen: [
+      "only one file's declaration shape is required, in which case use get_file_skeleton",
+      'the internals of an external package are the target; packages are reported but never traversed',
+    ],
+    nextSteps: ['get_file_skeleton'],
+    scope: 'one entry file and the local files it reaches, inside the server workspace root',
+    changesState: false,
+  },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   inputSchema: graphInput,
   outputSchema: graphOutput,
   handler: (input, services, context) =>
@@ -238,11 +246,8 @@ export const getDependencyGraphTool = defineTool({
       path: input.path,
       ...(input.maxDepth === undefined ? {} : { maxDepth: input.maxDepth }),
       ...(input.limits === undefined ? {} : { limits: input.limits }),
-      ...(context.signal === undefined ? {} : { signal: context.signal }),
+      signal: context.signal,
     }),
 });
 
-export const toolDefinitions = [
-  getFileSkeletonTool,
-  getDependencyGraphTool,
-] as const satisfies readonly ToolDefinition[];
+export const astTools = [getFileSkeletonTool, getDependencyGraphTool];

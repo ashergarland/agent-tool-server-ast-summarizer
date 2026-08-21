@@ -1,7 +1,7 @@
 import ts from 'typescript';
-import type { Cancellation } from '../platform/cancellation.js';
-import type { Budget } from '../platform/limits.js';
-import type { WarningCollector } from '../platform/warnings.js';
+import type { Cancellation } from '@agent-tool-platform/runtime/cancellation';
+import type { Budget } from './limits.js';
+import type { WarningCollector } from './warnings.js';
 import { noTypeResolver, renderTypeNode, unknownType, type TypeResolver } from './type-text.js';
 
 /**

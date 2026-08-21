@@ -1,7 +1,7 @@
 import { dirname, join, resolve } from 'node:path';
 import ts from 'typescript';
-import type { WarningCollector } from '../platform/warnings.js';
-import type { Workspace } from '../platform/workspace.js';
+import type { WarningCollector } from './warnings.js';
+import type { Workspace } from './workspace.js';
 
 /**
  * Bounded tsconfig handling.

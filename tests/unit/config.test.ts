@@ -1,33 +1,36 @@
-import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import {
-  buildConfig,
-  ConfigurationError,
-  envSchema,
-  loadConfig,
-  withoutBlankValues,
-} from '../../src/config/index.js';
-import { defaultLimits } from '../../src/platform/limits.js';
+import { ConfigurationError } from '@agent-tool-platform/runtime/config';
+import { defaultLimits } from '../../src/ast/limits.js';
+import { loadAstConfig } from '../../src/config/index.js';
 import { testApiKey } from '../helpers/config.js';
 
-describe('configuration', () => {
+describe('AST configuration', () => {
   it('applies conservative analysis defaults and ignores blank optional values', () => {
-    const config = loadConfig({
+    const config = loadAstConfig({
       NODE_ENV: 'test',
       AUTH_MODE: 'api-key',
       API_KEYS: testApiKey,
       PUBLIC_BASE_URL: '',
+      AST_WORKSPACE_ROOT: '',
     });
     expect(config.analysis.limits).toEqual(defaultLimits);
     expect(config.analysis.maxConcurrentJobs).toBe(2);
     expect(config.analysis.includePrivateMembers).toBe(false);
     expect(config.workspace.root).toBeUndefined();
     expect(config.service.publicBaseUrl).toBeUndefined();
-    expect(withoutBlankValues({ A: '', B: 'x' })).toEqual({ B: 'x' });
+  });
+
+  it('keeps the platform configuration surface alongside the AST surface', () => {
+    const config = loadAstConfig({ NODE_ENV: 'test', AUTH_MODE: 'disabled' });
+    expect(config.service.name).toBe('agent-tool-server-ast-summarizer');
+    expect(config.http.port).toBe(8080);
+    expect(config.auth.mode).toBe('disabled');
+    expect(config.logging.level).toBe('info');
+    expect(config.mutations.enabled).toBe(false);
   });
 
   it('reads workspace and limit overrides from the environment', () => {
-    const config = loadConfig({
+    const config = loadAstConfig({
       NODE_ENV: 'test',
       AUTH_MODE: 'disabled',
       AST_WORKSPACE_ROOT: '/srv/workspace',
@@ -43,41 +46,40 @@ describe('configuration', () => {
     expect(config.analysis.typeInference).toBe('off');
   });
 
-  it('rejects disabled production authentication', () => {
+  it('inherits platform production safety for authentication', () => {
+    expect(() => loadAstConfig({ NODE_ENV: 'production', AUTH_MODE: 'disabled' })).toThrow(
+      ConfigurationError,
+    );
     expect(() =>
-      buildConfig(envSchema.parse({ NODE_ENV: 'production', AUTH_MODE: 'disabled' })),
+      loadAstConfig({ NODE_ENV: 'test', AUTH_MODE: 'api-key', API_KEYS: 'short' }),
     ).toThrow(ConfigurationError);
   });
 
-  it('rejects API keys a fast keyed hash cannot safely protect', () => {
-    const withKey = (key: string) => (): unknown =>
-      buildConfig(envSchema.parse({ NODE_ENV: 'test', AUTH_MODE: 'api-key', API_KEYS: key }));
-
-    expect(withKey('short')).toThrow('at least 32 characters');
-    // 32 characters but no entropy at all: accepted before this check existed.
-    expect(withKey('a'.repeat(32))).toThrow('repeats a short pattern');
-    expect(withKey('1234567890'.repeat(4))).toThrow('repeats a short pattern');
-    expect(withKey(`abcabd${'ab'.repeat(14)}`)).toThrow('entropy');
-    expect(withKey(randomBytes(32).toString('hex'))).not.toThrow();
-    expect(withKey(testApiKey)).not.toThrow();
-  });
-
-  it('rejects an incoherent byte ceiling and invalid limit values', () => {
+  it('rejects an incoherent byte ceiling and invalid AST limit values', () => {
     expect(() =>
-      buildConfig(
-        envSchema.parse({
-          NODE_ENV: 'test',
-          AUTH_MODE: 'disabled',
-          AST_MAX_FILE_BYTES: '2000',
-          AST_MAX_TOTAL_BYTES: '1000',
-        }),
-      ),
+      loadAstConfig({
+        NODE_ENV: 'test',
+        AUTH_MODE: 'disabled',
+        AST_MAX_FILE_BYTES: '2000',
+        AST_MAX_TOTAL_BYTES: '1000',
+      }),
     ).toThrow('AST_MAX_TOTAL_BYTES');
     expect(() =>
-      loadConfig({ NODE_ENV: 'test', AUTH_MODE: 'disabled', AST_MAX_DECLARATIONS: '0' }),
+      loadAstConfig({ NODE_ENV: 'test', AUTH_MODE: 'disabled', AST_MAX_DECLARATIONS: '0' }),
     ).toThrow(ConfigurationError);
     expect(() =>
-      loadConfig({ NODE_ENV: 'test', AUTH_MODE: 'disabled', AST_TYPE_INFERENCE: 'whole-project' }),
+      loadAstConfig({
+        NODE_ENV: 'test',
+        AUTH_MODE: 'disabled',
+        AST_TYPE_INFERENCE: 'whole-project',
+      }),
+    ).toThrow(ConfigurationError);
+    expect(() =>
+      loadAstConfig({
+        NODE_ENV: 'test',
+        AUTH_MODE: 'disabled',
+        AST_INCLUDE_PRIVATE_MEMBERS: 'maybe',
+      }),
     ).toThrow(ConfigurationError);
   });
 });

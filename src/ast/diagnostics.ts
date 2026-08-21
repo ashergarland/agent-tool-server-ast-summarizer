@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { boundedMessage } from '../errors.js';
+import { boundedMessage } from '@agent-tool-platform/runtime/errors';
 
 export interface ParseDiagnostic {
   readonly code: number;
