@@ -19,6 +19,11 @@ interface JsonRpcResponse {
   readonly error?: { readonly code: number; readonly message: string };
 }
 
+export interface StdioExit {
+  readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
+}
+
 export class StdioMcpClient {
   private readonly child: ChildProcessWithoutNullStreams;
   private buffer = '';
@@ -28,23 +33,30 @@ export class StdioMcpClient {
   public readonly stderr: string[] = [];
   /** Anything received on stdout that was not a JSON-RPC message. */
   public readonly nonProtocolOutput: string[] = [];
+  /** Resolves with how the entry point terminated, so graceful shutdown can be asserted. */
+  public readonly exit: Promise<StdioExit>;
 
   public constructor(cwd: string, env: NodeJS.ProcessEnv = {}) {
+    const baseEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      TSX_TSCONFIG_PATH: `${repositoryRoot}tsconfig.json`,
+    };
+    // Removed rather than blanked so callers can distinguish "unset" from "blank"; an inherited
+    // value would otherwise silently satisfy the default the tests exist to exercise.
+    delete baseEnv['AST_WORKSPACE_ROOT'];
+
     this.child = spawn(process.execPath, [tsxCli, stdioEntry], {
       cwd,
-      env: {
-        ...process.env,
-        // Cleared so the entry point exercises its documented default of the launch directory.
-        AST_WORKSPACE_ROOT: '',
-        TSX_TSCONFIG_PATH: `${repositoryRoot}tsconfig.json`,
-        ...env,
-      },
+      env: { ...baseEnv, ...env },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.child.stdout.setEncoding('utf8');
     this.child.stderr.setEncoding('utf8');
     this.child.stdout.on('data', (chunk: string) => this.consume(chunk));
     this.child.stderr.on('data', (chunk: string) => this.stderr.push(chunk));
+    this.exit = new Promise<StdioExit>((resolve) => {
+      this.child.once('exit', (code, signal) => resolve({ code, signal }));
+    });
   }
 
   private consume(chunk: string): void {
@@ -107,18 +119,28 @@ export class StdioMcpClient {
     return response;
   }
 
-  public async close(): Promise<void> {
+  /**
+   * Closes the client end of the pipe — how an MCP client asks a stdio server to stop — and reports
+   * how the entry point terminated, so a clean exit can be asserted rather than assumed.
+   */
+  public async shutdown(timeoutMs = 15_000): Promise<StdioExit> {
     this.child.stdin.end();
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
+    let timer: NodeJS.Timeout | undefined;
+    const expired = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
         this.child.kill('SIGKILL');
-        resolve();
-      }, 5_000);
+        reject(new Error(`stdio entry point did not exit within ${timeoutMs}ms`));
+      }, timeoutMs);
       timer.unref?.();
-      this.child.once('exit', () => {
-        clearTimeout(timer);
-        resolve();
-      });
     });
+    try {
+      return await Promise.race([this.exit, expired]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  public async close(): Promise<void> {
+    await this.shutdown(5_000).catch(() => undefined);
   }
 }
