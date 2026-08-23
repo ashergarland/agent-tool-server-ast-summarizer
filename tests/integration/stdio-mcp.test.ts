@@ -3,8 +3,9 @@ import { StdioMcpClient } from '../helpers/stdio-client.js';
 import { createWorkspace } from '../helpers/workspace.js';
 
 /**
- * Local stdio MCP, exercised as VS Code exercises it: a real child process, real protocol traffic,
- * and no explicit workspace configuration so the documented `process.cwd()` default is under test.
+ * Local stdio MCP, exercised as VS Code exercises it: a real child process and real protocol
+ * traffic. The workspace policy this entry point still owns is covered in all three of its states —
+ * unset, blank, and explicitly configured — because the platform helper owns everything else.
  */
 
 const clients: StdioMcpClient[] = [];
@@ -13,11 +14,27 @@ afterEach(async () => {
   await Promise.all(clients.splice(0).map((client) => client.close()));
 });
 
-const connect = async (root: string): Promise<StdioMcpClient> => {
-  const client = new StdioMcpClient(root);
+const connect = async (root: string, env: NodeJS.ProcessEnv = {}): Promise<StdioMcpClient> => {
+  const client = new StdioMcpClient(root, env);
   clients.push(client);
   await client.initialize();
   return client;
+};
+
+/** Names the file a tool call actually reached, which is what proves which workspace was used. */
+const skeletonOf = async (
+  client: StdioMcpClient,
+  path: string,
+): Promise<{ isError: boolean; skeleton: string }> => {
+  const response = await client.request('tools/call', {
+    name: 'get_file_skeleton',
+    arguments: { path },
+  });
+  const structured = response.result?.['structuredContent'] as { skeleton?: string } | undefined;
+  return {
+    isError: response.result?.['isError'] === true,
+    skeleton: structured?.skeleton ?? '',
+  };
 };
 
 describe('stdio MCP entry point', () => {
@@ -58,6 +75,46 @@ describe('stdio MCP entry point', () => {
     expect(graphResult.entry).toBe('src/main.ts');
     expect(graphResult.files).toContain('src/types.ts');
 
+    expect(client.nonProtocolOutput).toEqual([]);
+  }, 120_000);
+
+  it('treats a blank AST_WORKSPACE_ROOT as unset and still uses the launch directory', async () => {
+    const root = await createWorkspace({ 'blank.ts': 'export const blank: number = 1;\n' });
+    const client = await connect(root, { AST_WORKSPACE_ROOT: '   ' });
+
+    const result = await skeletonOf(client, 'blank.ts');
+    expect(result.isError).toBe(false);
+    expect(result.skeleton).toContain('blank');
+    expect(client.nonProtocolOutput).toEqual([]);
+  }, 120_000);
+
+  it('lets an explicit AST_WORKSPACE_ROOT override the launch directory', async () => {
+    const launched = await createWorkspace({
+      'launched.ts': 'export const launched: number = 1;\n',
+    });
+    const configured = await createWorkspace({
+      'configured.ts': 'export const configured: number = 2;\n',
+    });
+    const client = await connect(launched, { AST_WORKSPACE_ROOT: configured });
+
+    const inConfigured = await skeletonOf(client, 'configured.ts');
+    expect(inConfigured.isError).toBe(false);
+    expect(inConfigured.skeleton).toContain('configured');
+
+    // The launch directory is no longer the workspace, so its files are outside the boundary.
+    const inLaunched = await skeletonOf(client, 'launched.ts');
+    expect(inLaunched.isError).toBe(true);
+
+    expect(client.nonProtocolOutput).toEqual([]);
+  }, 120_000);
+
+  it('shuts down cleanly when the client closes the pipe', async () => {
+    const root = await createWorkspace({ 'a.ts': 'export const a: number = 1;\n' });
+    const client = await connect(root);
+    await skeletonOf(client, 'a.ts');
+
+    const exit = await client.shutdown();
+    expect(exit.code).toBe(0);
     expect(client.nonProtocolOutput).toEqual([]);
   }, 120_000);
 

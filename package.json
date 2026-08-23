@@ -30,12 +30,12 @@
     "url": "git+https://github.com/ashergarland/agent-tool-server-ast-summarizer.git"
   },
   "dependencies": {
-    "@agent-tool-platform/runtime": "0.1.1",
+    "@agent-tool-platform/runtime": "0.1.2",
     "typescript": "5.9.3",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@agent-tool-platform/testkit": "0.1.1",
+    "@agent-tool-platform/testkit": "0.1.2",
     "@types/node": "22.20.1",
     "@vitest/coverage-v8": "4.1.10",
     "eslint": "9.39.5",

@@ -193,9 +193,23 @@ import { astSummarizerCapability } from './capability.js';
 await startAgentToolApplication(astSummarizerCapability);
 ```
 
-`src/mcp/stdio.ts` is the same capability created through `createAgentToolApplication` with a silent
-logger and a workspace that defaults to `process.cwd()`, connected to the platform's stdio MCP
-transport. No listener is bound and nothing but protocol traffic reaches stdout.
+`src/mcp/stdio.ts` is the same capability started through the platform's
+`startStdioAgentToolApplication`, which owns the silent logger, local execution semantics, the MCP
+server, the transport, signal handling, and ordered shutdown. The only thing the file decides is AST
+policy: the workspace defaults to `process.cwd()`, and a blank `AST_WORKSPACE_ROOT` is treated as
+unset. No listener is bound and nothing but protocol traffic reaches stdout.
+
+```ts
+import { startStdioAgentToolApplication } from '@agent-tool-platform/runtime/capability';
+import { astSummarizerCapability } from '../capability.js';
+
+await startStdioAgentToolApplication(astSummarizerCapability, {
+  env: {
+    ...process.env,
+    AST_WORKSPACE_ROOT: process.env['AST_WORKSPACE_ROOT']?.trim() || process.cwd(),
+  },
+});
+```
 
 `src/ast/workspace.ts` composes the platform's `RootBoundary` — canonical root resolution,
 relative-input enforcement, symlink containment, realpath handling, regular-file validation, bounded
