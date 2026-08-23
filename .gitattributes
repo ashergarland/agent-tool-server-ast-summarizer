@@ -1,0 +1,11 @@
+# Every text file is stored and checked out with LF on all platforms.
+#
+# Prettier is configured with the default `endOfLine: "lf"`, so without this a Windows
+# clone using `core.autocrlf=true` fails `npm run format:check` on files it never touched:
+# the content is correct and only the checkout differs. Pinning `eol=lf` here makes the
+# check behave identically on Windows and Linux without asking contributors to change
+# their global Git configuration.
+#
+# `text=auto` still lets Git detect and leave binary files alone. No file in this
+# repository requires CRLF, so there are no exceptions.
+* text=auto eol=lf
