@@ -357,11 +357,12 @@ read-only fixture, checks missing-workspace readiness, authenticated HTTP, path 
 implementation-body non-leakage, read-only operation, and unprivileged execution, and builds and
 lints every Bicep entry point and development parameter file.
 
-The release caller remains manual-only and dry-run-only. Starting from the checked-in
-`0.0.0-development` state, it ephemerally stamps a selected stable candidate, runs the full quality
-and packed-artifact smoke suites, builds the exact tarball, and runs `npm publish --dry-run`.
-It has no tag trigger and cannot publish or create a GitHub Release. Initial publication, npm Trusted
-Publishing, and tag-triggered releases remain M2.5 work.
+Pushed `vX.Y.Z` tags enter the reusable release workflow, which validates the tag and default-branch
+history, ephemerally stamps the checked-in `0.0.0-development` state, runs the full quality and
+packed-artifact smoke suites, publishes through npm Trusted Publishing with OIDC, verifies the public
+package, and creates the GitHub Release. Manual dispatch remains dry-run-only: it requires a stable
+candidate version, performs the same release rehearsal through `npm publish --dry-run`, and publishes
+nothing.
 
 ## Platform conformance
 
