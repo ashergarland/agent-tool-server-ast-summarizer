@@ -297,10 +297,24 @@ az bicep build --file infra/main.bicep
 az bicep lint --file infra/main.bicep
 ```
 
-CI additionally invokes both tools inside the container against a mounted read-only fixture, checks
-not-ready behaviour and unprivileged execution, runs the `@agent-tool-platform/testkit` conformance
-suites, validates routing fixtures without an external model, compiles every Bicep entry point,
-audits production dependencies, scans for secrets, and runs CodeQL.
+CI and Security delegate their generic capability gates to the Agent Tool Platform workflows pinned
+at immutable commit `d3415dd9a7b825ff15fb869236cffbc5ffce5d65`. The shared workflows install,
+format, lint, typecheck, test with coverage, build, generate OpenAPI, validate metadata, audit
+dependencies, scan for secrets, and run CodeQL.
+
+AST keeps its domain validation local: CI invokes both tools inside the container against a mounted
+read-only fixture, checks missing-workspace readiness, authenticated HTTP, path confinement,
+implementation-body non-leakage, read-only operation, and unprivileged execution, and builds and
+lints every Bicep entry point and development parameter file.
+
+The release caller is intentionally limited to manual `npm publish --dry-run` validation. It has no
+tag trigger and cannot publish or create a GitHub Release. While the package remains private and at
+its current checked-in version, the shared workflow rejects it at the package precondition gate.
+M2.4 must choose and bootstrap the public package identity, remove `private: true`, set the checked-in
+package, lockfile, and server metadata versions to `0.0.0-development`, add `package:smoke`, and
+declare the matching root npm package in `server.json`. It must then bootstrap the first public
+version and configure npm Trusted Publishing for `.github/workflows/publish.yml` before enabling
+tag-triggered publication.
 
 ## Platform conformance
 
