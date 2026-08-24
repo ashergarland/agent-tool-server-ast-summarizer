@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { startStdioAgentToolApplication } from '@agent-tool-platform/runtime/capability';
 import { astSummarizerCapability } from '../capability.js';
 

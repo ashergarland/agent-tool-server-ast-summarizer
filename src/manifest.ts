@@ -9,7 +9,7 @@ import type { CapabilityManifest } from '@agent-tool-platform/runtime/capability
  */
 export const astManifest: CapabilityManifest = {
   name: 'agent-tool-server-ast-summarizer',
-  version: '0.0.0-dev',
+  version: '0.0.0-development',
   title: 'AST Summarizer',
   description:
     'Read-only TypeScript and JavaScript structure analysis for one local workspace: declaration-only file skeletons and local dependency graphs.',

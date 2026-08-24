@@ -11,7 +11,7 @@ RUN npm run build \
 
 FROM node:22-alpine AS runtime
 ARG GIT_SHA=unknown
-ARG SERVICE_VERSION=0.0.0-dev
+ARG SERVICE_VERSION=0.0.0-development
 # No workspace is configured on purpose. Hosting is opt-in: until an operator mounts a read-only
 # source volume and sets AST_WORKSPACE_ROOT, the server starts, stays live, and reports not ready.
 # The application directory, dist, and node_modules are never a caller workspace.
