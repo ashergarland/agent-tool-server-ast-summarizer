@@ -1,21 +1,40 @@
 {
-  "name": "agent-tool-server-ast-summarizer",
-  "version": "0.1.0",
+  "name": "@agent-tool-platform/ast-summarizer",
+  "version": "0.0.0-development",
   "description": "MCP and HTTP tools for local AST skeletons and dependency graphs.",
   "license": "MIT",
   "type": "module",
-  "private": true,
   "engines": {
     "node": ">=22.0.0"
   },
-  "main": "dist/index.js",
+  "main": "./dist/public.js",
+  "types": "./dist/public.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/public.d.ts",
+      "import": "./dist/public.js"
+    }
+  },
+  "bin": {
+    "agent-tool-ast-summarizer": "dist/mcp/stdio.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "prebuild": "npm run clean",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "mcp:stdio": "node dist/mcp/stdio.js",
     "openapi:emit": "tsx scripts/emit-openapi.ts openapi.json",
     "metadata:validate": "agent-tool-validate-metadata --server server.json --package package.json --registry examples/central-registry-entry.json",
+    "package:smoke": "tsx scripts/package-smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -21,7 +21,7 @@ jobs:
     with:
       node_version: '22'
       openapi_path: openapi.json
-      run_package_smoke: false
+      run_package_smoke: true
 
   container:
     needs: capability

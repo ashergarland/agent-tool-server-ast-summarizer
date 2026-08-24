@@ -98,6 +98,9 @@ const skeletonOutput = z.object({
   }),
 });
 
+export type GetFileSkeletonInput = z.infer<typeof skeletonInput>;
+export type GetFileSkeletonOutput = z.infer<typeof skeletonOutput>;
+
 export const getFileSkeletonTool = defineTool<
   AstServices,
   typeof skeletonInput,
@@ -219,6 +222,9 @@ const graphOutput = z.object({
     maxDepth: z.number().int().nonnegative().describe('Effective depth ceiling after clamping.'),
   }),
 });
+
+export type GetDependencyGraphInput = z.infer<typeof graphInput>;
+export type GetDependencyGraphOutput = z.infer<typeof graphOutput>;
 
 export const getDependencyGraphTool = defineTool<
   AstServices,

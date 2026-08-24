@@ -6,5 +6,15 @@
     "url": "https://github.com/ashergarland/agent-tool-server-ast-summarizer",
     "source": "github"
   },
-  "version": "0.1.0"
+  "version": "0.0.0-development",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@agent-tool-platform/ast-summarizer",
+      "version": "0.0.0-development",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
 }

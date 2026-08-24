@@ -8,6 +8,10 @@ This repository is a **capability**: it owns AST behaviour and nothing else. Tra
 registry, authentication, rate limiting, OpenAPI generation, lifecycle, readiness aggregation, and
 the filesystem root boundary come from [`@agent-tool-platform/runtime`](https://www.npmjs.com/package/@agent-tool-platform/runtime).
 
+The publication-ready package identity is `@agent-tool-platform/ast-summarizer`. The initial npm
+publication is intentionally deferred to M2.5, so the installation commands below describe
+post-publication usage rather than current registry availability.
+
 ## Tools
 
 | Tool                   | Purpose                                                                       |
@@ -25,7 +29,51 @@ single rule decides which deployment shapes work. Read [`docs/use-cases.md`](doc
 before planning a deployment — in particular, pointing VS Code at a remote instance is not
 supported, because a remote server cannot see your local files.
 
-## Quick start in VS Code
+## Package consumption (after initial publication)
+
+AST Summarizer is local-first because it must read the workspace being analysed. The normal MCP
+deployment is therefore a local stdio process launched with the workspace as its root, not a remote
+service.
+
+### Local MCP host
+
+An MCP host may let `npx` resolve and launch the package's sole executable:
+
+```json
+{
+  "servers": {
+    "ast-summarizer": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["--yes", "@agent-tool-platform/ast-summarizer"],
+      "env": { "AST_WORKSPACE_ROOT": "${workspaceFolder}" }
+    }
+  }
+}
+```
+
+For a pinned installation, install the package in the host project and launch the
+`agent-tool-ast-summarizer` bin. `AST_WORKSPACE_ROOT` takes precedence; when it is unset or blank,
+the executable uses its launch directory.
+
+### Programmatic composition
+
+Node/TypeScript assemblies import the side-effect-free capability definition from the package root:
+
+```ts
+import {
+  astSummarizerCapability,
+  astManifest,
+  type GetFileSkeletonInput,
+  type GetFileSkeletonOutput,
+} from '@agent-tool-platform/ast-summarizer';
+```
+
+The public surface is intentionally narrow: the capability definition, its manifest, AST
+configuration types, and typed inputs and outputs for both tools. Internal services, projectors,
+workspace adapters, and transport bootstraps are not public deep imports.
+
+## Repository development in VS Code
 
 ### Analysing this repository
 
@@ -179,10 +227,10 @@ stdio MCP / Streamable HTTP MCP / HTTP + OpenAPI     <- @agent-tool-platform/run
           TypeScript Compiler API (parse only)
 ```
 
-| Owner                              | Responsibility                                                                                                                                                                                                                                |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@agent-tool-platform/runtime`     | HTTP server, MCP (stdio and Streamable HTTP), tool registry and routing grammar, OpenAPI, authentication, rate limiting, lifecycle, readiness aggregation, error contract, logging, cancellation, concurrency, `RootBoundary`, telemetry seam |
-| `agent-tool-server-ast-summarizer` | Declaration projection, dependency resolution, diagnostics, type rendering, AST limits and budgets, AST workspace policy, AST configuration, readiness contributors, context-savings estimates                                                |
+| Owner                                 | Responsibility                                                                                                                                                                                                                                |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@agent-tool-platform/runtime`        | HTTP server, MCP (stdio and Streamable HTTP), tool registry and routing grammar, OpenAPI, authentication, rate limiting, lifecycle, readiness aggregation, error contract, logging, cancellation, concurrency, `RootBoundary`, telemetry seam |
+| `@agent-tool-platform/ast-summarizer` | Declaration projection, dependency resolution, diagnostics, type rendering, AST limits and budgets, AST workspace policy, AST configuration, readiness contributors, context-savings estimates                                                |
 
 The whole HTTP entry point is:
 
@@ -263,11 +311,11 @@ The deployment is an example, not an implied Azure dependency in the application
 
 ## Metadata
 
-`server.json` describes the repository only: no npm package is published and no public remote
-exists, so neither is advertised. `npm run metadata:validate` runs the platform's
-`agent-tool-validate-metadata` binary, which rejects placeholder values, version drift, and
-untruthful package or remote declarations. Add `packages` or `remotes` only when they genuinely
-exist.
+`server.json` describes the local stdio distribution candidate
+`@agent-tool-platform/ast-summarizer` at the checked-in `0.0.0-development` version. This is release
+metadata, not a claim that the package has already been published. No public remote exists, so none
+is advertised. `npm run metadata:validate` runs the platform's `agent-tool-validate-metadata`
+binary, which rejects placeholder values, identity drift, version drift, and untruthful remotes.
 
 ## Troubleshooting
 
@@ -285,6 +333,7 @@ exist.
 ## Validation
 
 ```bash
+npm ci
 npm run format:check
 npm run lint
 npm run typecheck
@@ -292,6 +341,7 @@ npm run test:coverage
 npm run build
 npm run openapi:emit
 npm run metadata:validate
+npm run package:smoke
 docker build -t agent-tool-server-ast-summarizer .
 az bicep build --file infra/main.bicep
 az bicep lint --file infra/main.bicep
@@ -307,14 +357,11 @@ read-only fixture, checks missing-workspace readiness, authenticated HTTP, path 
 implementation-body non-leakage, read-only operation, and unprivileged execution, and builds and
 lints every Bicep entry point and development parameter file.
 
-The release caller is intentionally limited to manual `npm publish --dry-run` validation. It has no
-tag trigger and cannot publish or create a GitHub Release. While the package remains private and at
-its current checked-in version, the shared workflow rejects it at the package precondition gate.
-M2.4 must choose and bootstrap the public package identity, remove `private: true`, set the checked-in
-package, lockfile, and server metadata versions to `0.0.0-development`, add `package:smoke`, and
-declare the matching root npm package in `server.json`. It must then bootstrap the first public
-version and configure npm Trusted Publishing for `.github/workflows/publish.yml` before enabling
-tag-triggered publication.
+The release caller remains manual-only and dry-run-only. Starting from the checked-in
+`0.0.0-development` state, it ephemerally stamps a selected stable candidate, runs the full quality
+and packed-artifact smoke suites, builds the exact tarball, and runs `npm publish --dry-run`.
+It has no tag trigger and cannot publish or create a GitHub Release. Initial publication, npm Trusted
+Publishing, and tag-triggered releases remain M2.5 work.
 
 ## Platform conformance
 
