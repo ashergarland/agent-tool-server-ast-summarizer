@@ -1,0 +1,25 @@
+name: Release readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact stable version to validate after M2.4 prerequisites are complete'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  # agent-tool-platform workflow pin: d3415dd9a7b825ff15fb869236cffbc5ffce5d65
+  dry-run:
+    permissions:
+      contents: write
+      id-token: write
+    uses: ashergarland/agent-tool-platform/.github/workflows/capability-release.yml@d3415dd9a7b825ff15fb869236cffbc5ffce5d65
+    with:
+      version: ${{ inputs.version }}
+      dry_run: true
+      recover_github_release: false

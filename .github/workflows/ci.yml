@@ -13,28 +13,18 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run format:check
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run test:coverage
-      - run: npm run build
-      - run: npm run openapi:emit
-      - run: npm run metadata:validate
-      - uses: actions/upload-artifact@v4
-        with:
-          name: openapi
-          path: openapi.json
+  # agent-tool-platform workflow pin: d3415dd9a7b825ff15fb869236cffbc5ffce5d65
+  capability:
+    permissions:
+      contents: read
+    uses: ashergarland/agent-tool-platform/.github/workflows/capability-ci.yml@d3415dd9a7b825ff15fb869236cffbc5ffce5d65
+    with:
+      node_version: '22'
+      openapi_path: openapi.json
+      run_package_smoke: false
 
   container:
+    needs: capability
     runs-on: ubuntu-latest
     env:
       IMAGE: agent-tool-server-ast-summarizer:test
@@ -121,6 +111,7 @@ jobs:
         run: test "$(docker inspect --format '{{.Config.User}}' "$IMAGE")" = node
 
   bicep:
+    needs: capability
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
